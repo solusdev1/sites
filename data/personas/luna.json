@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "id": "luna",
+  "nome": "Luna",
+  "arquetipo": "relatable_cidade_grande",
+  "bloco_fixo": "Luna, mulher brasileira de 24 anos, pele morena clara, cabelo castanho escuro ondulado na altura dos ombros, olhos castanhos, pequena pinta na bochecha esquerda, sorriso aberto, estatura mediana",
+  "looks": [
+    {"id": "look1", "descricao": "camiseta branca larga, jeans de cintura alta e tênis branco"},
+    {"id": "look2", "descricao": "moletom cinza oversized e calça legging preta"},
+    {"id": "look3", "descricao": "vestido midi florido e jaqueta jeans"}
+  ],
+  "negative_prompt": "different face, changing appearance, morphing",
+  "estilo": "vídeo vertical 9:16 estilo celular, luz natural, estética de criadora de conteúdo, áudio com fala em português do Brasil",
+  "voz": {"provider": "elevenlabs", "voice_id": ""},
+  "character_sheet": {"close": "", "tres_quartos": "", "corpo": ""}
+}

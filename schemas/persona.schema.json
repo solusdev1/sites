@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "persona.schema.json",
+  "title": "Persona",
+  "type": "object",
+  "required": ["version", "id", "nome", "arquetipo", "bloco_fixo", "looks", "negative_prompt", "estilo", "voz", "character_sheet"],
+  "properties": {
+    "version": {"const": 1},
+    "id": {"type": "string", "minLength": 1},
+    "nome": {"type": "string", "minLength": 1},
+    "arquetipo": {"enum": ["relatable_cidade_grande", "relatable", "fit", "luxo_viagem", "foodie", "review_tech", "serial_lore"]},
+    "bloco_fixo": {"type": "string", "minLength": 1},
+    "looks": {
+      "type": "array", "minItems": 1, "maxItems": 3,
+      "items": {
+        "type": "object", "required": ["id", "descricao"],
+        "properties": {"id": {"type": "string", "minLength": 1}, "descricao": {"type": "string", "minLength": 1}}
+      }
+    },
+    "negative_prompt": {"type": "string"},
+    "estilo": {"type": "string"},
+    "voz": {
+      "type": "object", "required": ["provider", "voice_id"],
+      "properties": {"provider": {"type": "string"}, "voice_id": {"type": "string"}}
+    },
+    "character_sheet": {
+      "type": "object", "required": ["close", "tres_quartos", "corpo"],
+      "properties": {"close": {"type": "string"}, "tres_quartos": {"type": "string"}, "corpo": {"type": "string"}}
+    }
+  }
+}

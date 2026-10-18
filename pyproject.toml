@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "veo-pipeline"
+version = "0.1.0"
+description = "Pipeline de influencer de IA (Luna) para Veo 3.1: roteiros, filas, geração e pós-produção"
+requires-python = ">=3.11"
+dependencies = ["jsonschema>=4.0"]
+
+[project.optional-dependencies]
+genai = ["google-genai"]
+dev = ["pytest"]
+
+[project.scripts]
+veo-pipeline = "veo_pipeline.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["veo_pipeline*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "persona_id": "luna",
+  "gerado_em": "2026-10-18T16:00:23+00:00",
+  "itens": [
+    {
+      "id": "de354ad6dbdb",
+      "tipo": "genjutsu",
+      "modo": "motion",
+      "look_id": "look1",
+      "cena": "Transfira o movimento do vídeo fonte para a personagem: mantenha coreografia, câmera e timing originais, apenas troque quem executa. Fonte: clipe_proprio.mp4. Variação: versão antes/depois: original e depois a Luna",
+      "hook": "Genjutsu motion: versão antes/depois: original e depois a Luna",
+      "fala": "",
+      "camera": "idêntica ao vídeo fonte",
+      "duracao_s": 8,
+      "prompt_final": "Luna, mulher brasileira de 24 anos, pele morena clara, cabelo castanho escuro ondulado na altura dos ombros, olhos castanhos, pequena pinta na bochecha esquerda, sorriso aberto, estatura mediana. Look: camiseta branca larga, jeans de cintura alta e tênis branco. Cena: Transfira o movimento do vídeo fonte para a personagem: mantenha coreografia, câmera e timing originais, apenas troque quem executa. Fonte: clipe_proprio.mp4. Variação: versão antes/depois: original e depois a Luna. Câmera: idêntica ao vídeo fonte. Estilo: vídeo vertical 9:16 estilo celular, luz natural, estética de criadora de conteúdo, áudio com fala em português do Brasil.",
+      "negative_prompt": "different face, changing appearance, morphing, choreography drift, camera change, different timing, extra limbs",
+      "anexos": {
+        "imagem_ancora": "luna_ancora.png",
+        "video_fonte": "clipe_proprio.mp4"
+      },
+      "legenda": "Minha personagem de IA refez isso (motion)",
+      "hashtags": [
+        "#genjutsu",
+        "#personagemIA",
+        "#IA",
+        "#conteudogeradoporia"
+      ],
+      "status": "pendente"
+    },
+    {
+      "id": "97a328f840f6",
+      "tipo": "genjutsu",
+      "modo": "motion",
+      "look_id": "look2",
+      "cena": "Transfira o movimento do vídeo fonte para a personagem: mantenha coreografia, câmera e timing originais, apenas troque quem executa. Fonte: clipe_proprio.mp4. Variação: Luna reagindo à própria ilusão",
+      "hook": "Genjutsu motion: Luna reagindo à própria ilusão",
+      "fala": "",
+      "camera": "idêntica ao vídeo fonte",
+      "duracao_s": 8,
+      "prompt_final": "Luna, mulher brasileira de 24 anos, pele morena clara, cabelo castanho escuro ondulado na altura dos ombros, olhos castanhos, pequena pinta na bochecha esquerda, sorriso aberto, estatura mediana. Look: moletom cinza oversized e calça legging preta. Cena: Transfira o movimento do vídeo fonte para a personagem: mantenha coreografia, câmera e timing originais, apenas troque quem executa. Fonte: clipe_proprio.mp4. Variação: Luna reagindo à própria ilusão. Câmera: idêntica ao vídeo fonte. Estilo: vídeo vertical 9:16 estilo celular, luz natural, estética de criadora de conteúdo, áudio com fala em português do Brasil.",
+      "negative_prompt": "different face, changing appearance, morphing, choreography drift, camera change, different timing, extra limbs",
+      "anexos": {
+        "imagem_ancora": "luna_ancora.png",
+        "video_fonte": "clipe_proprio.mp4"
+      },
+      "legenda": "Minha personagem de IA refez isso (motion)",
+      "hashtags": [
+        "#genjutsu",
+        "#personagemIA",
+        "#IA",
+        "#conteudogeradoporia"
+      ],
+      "status": "pendente"
+    }
+  ]
+}

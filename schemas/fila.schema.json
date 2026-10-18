@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "fila.schema.json",
+  "title": "Fila",
+  "type": "object",
+  "required": ["version", "persona_id", "gerado_em", "itens"],
+  "properties": {
+    "version": {"const": 1},
+    "persona_id": {"type": "string", "minLength": 1},
+    "gerado_em": {"type": "string", "minLength": 10},
+    "itens": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "tipo", "modo", "look_id", "cena", "hook", "fala", "camera", "duracao_s", "prompt_final", "negative_prompt", "anexos", "legenda", "hashtags", "status"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "tipo": {"enum": ["veo", "genjutsu"]},
+          "modo": {"enum": [null, "motion", "swap_produto", "restyle"]},
+          "look_id": {"type": "string"},
+          "cena": {"type": "string"},
+          "hook": {"type": "string"},
+          "fala": {"type": "string"},
+          "camera": {"type": "string"},
+          "duracao_s": {"type": "number", "exclusiveMinimum": 0},
+          "prompt_final": {"type": "string", "minLength": 1},
+          "negative_prompt": {"type": "string"},
+          "anexos": {
+            "type": "object", "required": ["imagem_ancora", "video_fonte"],
+            "properties": {"imagem_ancora": {"type": "string"}, "video_fonte": {"type": "string"}}
+          },
+          "legenda": {"type": "string"},
+          "hashtags": {"type": "array", "items": {"type": "string"}},
+          "status": {"type": "string"}
+        }
+      }
+    }
+  }
+}
