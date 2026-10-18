@@ -68,3 +68,13 @@ test('ignora mensagens vazias e nunca aciona Generate', async () => {
   await message({type:'FILL_PROMPT', prompt:'Luna na cozinha'});
   assert.equal(clicks,0);
 });
+
+test('reconhece o editor ProseMirror do Flow (flow.google.com) pelo aria-label "O que você quer criar?"', async () => {
+  // DOM observado no Flow real em 2026-10-18: busca, título e editor ProseMirror com role=textbox.
+  const {window, message} = page('<input class="search-input" aria-label="Pesquisar"><input class="editable-text-input" aria-label="Texto editável"><textarea class="g-recaptcha-response" style="display:none"></textarea><div class="ProseMirror" contenteditable="true" role="textbox" aria-label="O que você quer criar?"><p><br></p></div>');
+  const field = window.FlowFieldSelection.findPromptField(window.document);
+  assert.equal(field.getAttribute('aria-label'), 'O que você quer criar?');
+  assert.equal((await message({type:'FILL_PROMPT', prompt:'Luna chega na kitnet'})).ok, true);
+  assert.equal(field.textContent, 'Luna chega na kitnet');
+  assert.equal(window.document.querySelector('.search-input').value, '');
+});
