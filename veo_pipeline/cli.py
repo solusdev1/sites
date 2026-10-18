@@ -1,4 +1,4 @@
-"""CLI: python -m veo_pipeline <roteiro|genjutsu|veo|pos|validar>."""
+"""CLI: python -m veo_pipeline <roteiro|sequencia|genjutsu|veo|pos|validar>."""
 from __future__ import annotations
 
 import argparse
@@ -26,12 +26,22 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--out", default="fila.json")
     r.add_argument("--append", action="store_true", help="mescla com a fila existente (dedup por id)")
 
+    s = sub.add_parser("sequencia", help="imagem da personagem -> 1º frame -> vídeos encadeados (Flow)")
+    s.add_argument("--persona", required=True)
+    s.add_argument("--nicho", required=True)
+    s.add_argument("--beats", type=int, default=3, help="quantidade de vídeos de 8s encadeados")
+    s.add_argument("--look", default=None, help="id do look (default: primeiro)")
+    s.add_argument("--indice", type=int, default=0, help="qual roteiro do arquétipo usar")
+    s.add_argument("--out", default="fila_sequencia.json")
+
     g = sub.add_parser("genjutsu", help="gera fila genjutsu (vídeo→vídeo)")
     g.add_argument("--persona", default="data/personas/luna.json")
     g.add_argument("--modo", required=True, choices=genjutsu.MODOS)
     g.add_argument("--video-fonte", required=True)
     g.add_argument("--imagem-ancora", default="")
     g.add_argument("--qtd", type=int, default=3)
+    g.add_argument("--preparar-fonte", action="store_true",
+                   help="cria <video>_mudo.mp4 (sem áudio, até 10s) com ffmpeg e usa na fila (exigido pelo Flow)")
     g.add_argument("--out", default="fila_genjutsu.json")
     g.add_argument("--append", action="store_true")
 
@@ -62,9 +72,15 @@ def main(argv: list[str] | None = None) -> int:
             fila = roteiro.gerar(persona, args.nicho, args.qtd, cfg.gemini_api_key, cfg.text_model)
             save_fila(args.out, fila, append=args.append)
             print(f"{len(fila['itens'])} itens -> {args.out}")
+        elif args.cmd == "sequencia":
+            persona = load_persona(args.persona)
+            fila = roteiro.gerar_sequencia(persona, args.nicho, args.beats, args.look, args.indice)
+            save_fila(args.out, fila)
+            print(f"{len(fila['itens'])} itens (2 imagens + {args.beats} vídeos) -> {args.out}")
         elif args.cmd == "genjutsu":
             persona = load_persona(args.persona)
-            fila = genjutsu.gerar(persona, args.modo, args.video_fonte, args.imagem_ancora, args.qtd)
+            fonte = str(genjutsu.preparar_fonte(args.video_fonte)) if args.preparar_fonte else args.video_fonte
+            fila = genjutsu.gerar(persona, args.modo, fonte, args.imagem_ancora, args.qtd)
             save_fila(args.out, fila, append=args.append)
             print(f"{len(fila['itens'])} itens -> {args.out}")
         elif args.cmd == "veo":

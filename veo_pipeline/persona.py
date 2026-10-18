@@ -47,6 +47,20 @@ def montar_prompt(persona: dict, look: dict, cena: str, camera: str, fala: str, 
     return ". ".join(p.rstrip(". ") for p in partes) + "."
 
 
+def montar_prompt_imagem(persona: dict, look: dict, cena: str = "") -> str:
+    """Imagem estática (sem fala, sem movimento): ficha de referência ou, com cena, o 1º frame dela."""
+    if cena:
+        abertura = "Fotografia realista, primeiro frame de um vídeo vertical, mesma pessoa da imagem de referência"
+        fundo = f"Cena: {cena}. Pose natural no início da ação, luz natural, estilo foto de celular"
+    else:
+        abertura = ("Retrato fotográfico de referência de personagem, corpo inteiro, de pé, de frente para a câmera, "
+                    "olhando para a lente, expressão neutra com leve sorriso")
+        fundo = "Fundo neutro cinza claro de estúdio, luz natural suave e uniforme, foto realista estilo celular, nitidez no rosto"
+    partes = [abertura, persona["bloco_fixo"].rstrip(". "), f"Look: {look['descricao']}", fundo,
+              "Sem texto, sem legenda, sem marca d'água, sem outras pessoas"]
+    return ". ".join(p.rstrip(". ") for p in partes) + "."
+
+
 def item_id(*parts: object) -> str:
     """Hash estável do conteúdo (mesmo conteúdo => mesmo id)."""
     raw = "\x1f".join("" if p is None else str(p) for p in parts)

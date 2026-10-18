@@ -6,7 +6,7 @@ import logging
 from typing import Callable
 
 from .fila import build_item, dedup, make_fila
-from .persona import normalizar_arquetipo
+from .persona import get_look, item_id, montar_prompt_imagem, normalizar_arquetipo
 
 log = logging.getLogger(__name__)
 
@@ -98,6 +98,55 @@ def gerar_offline(persona: dict, nicho: str, qtd: int) -> list[dict]:
             legenda=hook, hashtags=_TAGS.get(arq, []) + [f"#{formato}"],
         ))
     return dedup(itens)
+
+
+# Beats seguintes de uma sequência contínua (mesmo look/cenário); o 1º beat vem de _CONTEUDO.
+_CONTINUACAO = [
+    ("reage ao que acabou de ver, dá alguns passos pelo ambiente e mostra o detalhe principal",
+     "Não acredito, olha isso aqui de perto"),
+    ("vira para a câmera, se aproxima e fecha com o gancho, deixando a pergunta no ar",
+     "Comenta aí se você quer ver o que aconteceu depois"),
+    ("senta, respira fundo e conta a reação final com sinceridade",
+     "Eu achei que ia ser fácil, mas isso eu não esperava"),
+]
+CONTINUIDADE = ("Continuação da cena a partir desta imagem (último frame do vídeo anterior): mesma mulher, "
+                "mesma roupa, mesmo cenário e mesma luz")
+FLOW_IMAGEM = {"modo": "imagem", "proporcao": "9:16", "submodo": None}
+# Testado no Flow real: Omni 1.1 Flash, 720p, 10s, partindo de um frame (15 créditos por vídeo em 2026-10-18).
+FLOW_VIDEO = {"modo": "video", "proporcao": "9:16", "submodo": "frames", "modelo": "Omni 1.1 Flash", "resolucao": "720p"}
+DURACAO_VIDEO_S = 10
+
+
+def gerar_sequencia(persona: dict, nicho: str, beats: int = 3, look_id: str | None = None, indice: int = 0) -> dict:
+    """Imagem de referência (sem fala) -> 1º frame da cena -> vídeos encadeados pelo último frame."""
+    if not 1 <= beats <= len(_CONTINUACAO) + 1:
+        raise ValueError(f"beats deve estar entre 1 e {len(_CONTINUACAO) + 1}")
+    arq = normalizar_arquetipo(persona["arquetipo"])
+    gancho, acao, fala = _CONTEUDO[arq][indice % len(_CONTEUDO[arq])]
+    look = get_look(persona, look_id)
+    seq = item_id(persona["id"], "sequencia", nicho, gancho, look["id"], beats)
+    tags = _TAGS.get(arq, []) + ["#sequencia"]
+    comum = dict(look_id=look["id"], sequencia_id=seq, hashtags=tags)
+
+    ref = build_item(persona, tipo="imagem", modo=None, cena="", hook=f"Referência: {persona['nome']} ({look['id']})",
+                     fala="", camera="", duracao_s=0, prompt_final=montar_prompt_imagem(persona, look),
+                     flow=FLOW_IMAGEM, ordem=0, **comum)
+    cena1 = f"{acao}, em {nicho}"
+    frame1 = build_item(persona, tipo="imagem", modo=None, cena=cena1, hook=f"Primeiro frame: {gancho}", fala="",
+                        camera="", duracao_s=0, prompt_final=montar_prompt_imagem(persona, look, cena1),
+                        flow=FLOW_IMAGEM, frame_inicial=f"item:{ref['id']}", ordem=1, **comum)
+    itens = [ref, frame1]
+    anterior = f"item:{frame1['id']}"
+    roteiro_beats = [(cena1, fala)] + [(f"{c}, em {nicho}", f_) for c, f_ in _CONTINUACAO[:beats - 1]]
+    for n, (cena, fala_b) in enumerate(roteiro_beats, start=1):
+        video = build_item(persona, tipo="veo", modo=None, cena=cena, hook=f"Ep. {n}/{beats}: {gancho}", fala=fala_b,
+                           camera="plano médio de celular na mão, movimento contínuo", legenda=gancho,
+                           duracao_s=DURACAO_VIDEO_S,
+                           extra_prompt=CONTINUIDADE if n > 1 else "", flow=FLOW_VIDEO, frame_inicial=anterior,
+                           ordem=n + 1, **comum)
+        itens.append(video)
+        anterior = f"ultimo_frame:{video['id']}"
+    return make_fila(persona, itens)
 
 
 def _prompt_llm(persona: dict, nicho: str, qtd: int) -> str:

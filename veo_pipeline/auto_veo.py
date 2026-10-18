@@ -82,7 +82,8 @@ def executar(fila: dict, out_dir: str | Path, cfg: Config, *, dry_run: bool = Fa
     for it in fila["itens"]:
         mp4 = out / f"{it['id']}.mp4"
         if it["tipo"] != "veo":
-            log.warning("item %s (%s) ignorado: vídeo→vídeo não é suportado pela rota API", it["id"], it["tipo"])
+            motivo = "imagem é gerada no Flow" if it["tipo"] == "imagem" else "vídeo→vídeo não é suportado"
+            log.warning("item %s (%s) ignorado pela rota API: %s", it["id"], it["tipo"], motivo)
             resumo["ignorados"].append(it["id"])
         elif it.get("status") in ("descartado", "gerado"):
             log.info("item %s com status %s no plugin, pulando", it["id"], it["status"])

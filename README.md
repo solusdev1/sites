@@ -5,7 +5,8 @@ Reescrita do zero do pipeline descrito na conversa com o Kimi (`Veo3 API.docx`).
 ```
 pip install -e .[dev]          # jsonschema (+ pytest); google-genai é opcional: pip install -e .[genai]
 python -m veo_pipeline roteiro  --persona data/personas/luna.json --nicho "vida em SP" --qtd 10 --out fila.json
-python -m veo_pipeline genjutsu --modo motion|swap_produto|restyle --video-fonte clip.mp4 --imagem-ancora luna.png --qtd 3 --out fila_genjutsu.json
+python -m veo_pipeline sequencia --persona data/personas/luna.json --nicho "vida em SP" --beats 3 --out fila_sequencia.json
+python -m veo_pipeline genjutsu --modo motion|swap_produto|restyle --video-fonte clip.mp4 --imagem-ancora luna.png --qtd 3 --out fila_genjutsu.json [--preparar-fonte]
 python -m veo_pipeline veo      --fila fila.json --out-dir saida/ [--dry-run]
 python -m veo_pipeline pos      --pasta Downloads/lote --fila fila.json [--data 2026-10-18]
 python -m veo_pipeline validar  persona|fila arquivo.json
@@ -27,7 +28,8 @@ Teste de contrato: `tests/test_pipeline.py::test_plugin_aceita_filas_do_python` 
 ## Módulos
 - `persona.py` — carrega/valida persona, monta `prompt_final`. Arquétipos: relatable_cidade_grande (alias `relatable`), fit, luxo_viagem, foodie, review_tech, serial_lore.
 - `roteiro.py` — templates offline por arquétipo; formatos: série com cliffhanger, POV serializado, memórias, resposta a comentário. Com `GEMINI_API_KEY` usa google-genai (import lazy), com fallback offline em qualquer erro.
-- `genjutsu.py` — fila vídeo→vídeo (motion / swap_produto / restyle), anexos `video_fonte` + `imagem_ancora`, negative prompt reforçado.
+- `roteiro.gerar_sequencia` — imagem de referência (sem fala) → 1º frame da cena → vídeos encadeados pelo último frame (Flow: Omni 1.1 Flash, 720p, 10s).
+- `genjutsu.py` — fila vídeo→vídeo (motion / swap_produto / restyle), anexos `video_fonte` + `imagem_ancora`, negative prompt reforçado. No Flow: Vídeo → Elementos com Omni 1.1 Flash, vídeo fonte + personagem como elementos, prompt "sem fala". `--preparar-fonte` cria `<video>_mudo.mp4` (sem áudio, até 10s) com ffmpeg: com áudio o Flow recusa ("Não é possível editar a fala neste vídeo").
 - `auto_veo.py` — rota API opcional (Veo 3.1 fast, 8s, 720p, 1 take), polling com backoff e timeout, retomável, `--dry-run`. Itens `genjutsu` são ignorados (ver abaixo).
 - `pos_producao.py` — renomeia MP4 para `<data>_<id>.mp4`, gera `.txt` com legenda + hashtags + disclosure de IA (`#IA` e "Conteúdo gerado por IA", sempre), e `quarentena.csv` (arquivo, id, rosto_ok, observação).
 
@@ -42,7 +44,7 @@ Teste de contrato: `tests/test_pipeline.py::test_plugin_aceita_filas_do_python` 
 
 ## Não confirmado (afirmações do Kimi)
 - **Seed fixo** no Veo/Flow: não confirmado; não há seed exposto neste código (só negative prompt fixo).
-- **Vídeo→vídeo no Veo 3.1** (motion transfer / object swap enviando clipe fonte): não confirmado. A API conhecida aceita imagem inicial/referências e extensão de vídeo; por isso a rota API ignora itens genjutsu — eles servem à rota manual (plugin + Flow).
+- **Vídeo→vídeo na API do Veo 3.1**: não confirmado; a rota API ignora itens genjutsu. **No Flow** funciona (testado em 2026-10-18): Omni 1.1 Flash em Elementos com vídeo fonte sem áudio + imagem da Luna gerou o motion transfer de 10s (20 créditos).
 - **Preços** (US$ 0,15/s default é só placeholder) e **nome do modelo** (`veo-3.1-fast-generate-preview`): configuráveis, confira a tabela vigente.
 - **Higgsfield Genjutsu** (lançamento, preços US$ 2–7,20/clipe) e **trends/Lil Miquela**: vêm da conversa; a busca do Kimi falhou em partes, nada foi verificado.
 - Veo "sincroniza lábios a partir do áudio ElevenLabs" e Flow "Frames to Video com imagem âncora garante o rosto": não confirmados; a quarentena existe por isso.

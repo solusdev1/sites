@@ -15,14 +15,14 @@
         "required": ["id", "tipo", "modo", "look_id", "cena", "hook", "fala", "camera", "duracao_s", "prompt_final", "negative_prompt", "anexos", "legenda", "hashtags", "status"],
         "properties": {
           "id": {"type": "string", "minLength": 1},
-          "tipo": {"enum": ["veo", "genjutsu"]},
+          "tipo": {"enum": ["veo", "genjutsu", "imagem"]},
           "modo": {"enum": [null, "motion", "swap_produto", "restyle"]},
           "look_id": {"type": "string"},
           "cena": {"type": "string"},
           "hook": {"type": "string"},
           "fala": {"type": "string"},
           "camera": {"type": "string"},
-          "duracao_s": {"type": "number", "exclusiveMinimum": 0},
+          "duracao_s": {"type": "number", "minimum": 0},
           "prompt_final": {"type": "string", "minLength": 1},
           "negative_prompt": {"type": "string"},
           "anexos": {
@@ -31,7 +31,20 @@
           },
           "legenda": {"type": "string"},
           "hashtags": {"type": "array", "items": {"type": "string"}},
-          "status": {"enum": ["pendente", "preenchido", "gerado", "descartado"]}
+          "status": {"enum": ["pendente", "preenchido", "gerado", "descartado"]},
+          "flow": {
+            "type": "object", "required": ["modo", "proporcao", "submodo"],
+            "properties": {
+              "modo": {"enum": ["imagem", "video"]},
+              "proporcao": {"enum": ["16:9", "4:3", "1:1", "3:4", "9:16"]},
+              "submodo": {"enum": [null, "frames", "elementos"]},
+              "modelo": {"type": "string", "minLength": 1},
+              "resolucao": {"enum": ["360p", "720p", "1080p"]}
+            }
+          },
+          "frame_inicial": {"type": "string", "pattern": "^(|item:\\S+|ultimo_frame:\\S+)$"},
+          "sequencia_id": {"type": "string"},
+          "ordem": {"type": "integer", "minimum": 0}
         }
       }
     }

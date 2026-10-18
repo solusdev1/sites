@@ -16,14 +16,16 @@ DISCLOSURE = "Conteúdo gerado por IA"
 def build_item(persona: dict, *, tipo: str, modo: str | None, look_id: str | None, cena: str, hook: str,
                fala: str, camera: str, duracao_s: int = 8, legenda: str = "", hashtags: list[str] | None = None,
                extra_prompt: str = "", imagem_ancora: str = "", video_fonte: str = "",
-               negative_extra: str = "") -> dict:
+               negative_extra: str = "", prompt_final: str = "", flow: dict | None = None,
+               frame_inicial: str = "", sequencia_id: str = "", ordem: int | None = None) -> dict:
     look = get_look(persona, look_id)
     neg = persona["negative_prompt"]
     if negative_extra:
         neg = f"{neg}, {negative_extra}"
     tags = list(dict.fromkeys((hashtags or []) + HASHTAGS_BASE))
-    return {
-        "id": item_id(persona["id"], tipo, modo, look["id"], cena, hook, fala, camera, duracao_s, video_fonte),
+    item = {
+        "id": item_id(persona["id"], tipo, modo, look["id"], cena, hook, fala, camera, duracao_s, video_fonte,
+                      *([sequencia_id, ordem] if sequencia_id else [])),
         "tipo": tipo,
         "modo": modo,
         "look_id": look["id"],
@@ -32,13 +34,16 @@ def build_item(persona: dict, *, tipo: str, modo: str | None, look_id: str | Non
         "fala": fala,
         "camera": camera,
         "duracao_s": duracao_s,
-        "prompt_final": montar_prompt(persona, look, cena, camera, fala, extra_prompt),
+        "prompt_final": prompt_final or montar_prompt(persona, look, cena, camera, fala, extra_prompt),
         "negative_prompt": neg,
         "anexos": {"imagem_ancora": imagem_ancora, "video_fonte": video_fonte},
         "legenda": legenda or hook,
         "hashtags": tags,
         "status": "pendente",
     }
+    if flow:  # campos de sequência só entram quando usados (filas antigas continuam iguais)
+        item.update(flow=flow, frame_inicial=frame_inicial, sequencia_id=sequencia_id, ordem=ordem or 0)
+    return item
 
 
 def dedup(itens: list[dict]) -> list[dict]:

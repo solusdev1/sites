@@ -90,6 +90,26 @@ def test_genjutsu(persona, modo):
     assert it["anexos"] == {"imagem_ancora": "ancora.png", "video_fonte": "clip.mp4"}
     assert "morphing" in it["negative_prompt"] and "choreography drift" in it["negative_prompt"]
     assert len({i["id"] for i in fila["itens"]}) == 4
+    # Flow: Elementos + Omni, 10s, sem fala; o prompt não herda o "áudio com fala" do estilo da persona
+    assert it["flow"] == genjutsu.FLOW_GENJUTSU and it["duracao_s"] == 10
+    assert genjutsu.SEM_FALA in it["prompt_final"] and "com fala" not in it["prompt_final"]
+    assert persona["bloco_fixo"] in it["prompt_final"] and "clip.mp4" not in it["prompt_final"]
+
+
+def test_genjutsu_preparar_fonte(tmp_path, monkeypatch):
+    src = tmp_path / "trend.mp4"
+    src.write_bytes(b"x")
+    chamadas = []
+    monkeypatch.setattr(genjutsu.shutil, "which", lambda _: "ffmpeg")
+    out = genjutsu.preparar_fonte(src, run=lambda cmd, check: chamadas.append(cmd))
+    assert out == tmp_path / "trend_mudo.mp4"
+    cmd = chamadas[0]
+    assert cmd[cmd.index("-t") + 1] == "10" and "-an" in cmd and cmd[-1] == str(out)
+    with pytest.raises(FileNotFoundError):
+        genjutsu.preparar_fonte(tmp_path / "nao_existe.mp4")
+    monkeypatch.setattr(genjutsu.shutil, "which", lambda _: None)
+    with pytest.raises(FileNotFoundError, match="ffmpeg"):
+        genjutsu.preparar_fonte(src)
 
 
 def test_genjutsu_modo_invalido(persona):
@@ -255,7 +275,8 @@ def test_plugin_aceita_filas_do_python(persona, tmp_path):
         pytest.skip("node/plugin indisponivel")
     arquivos = []
     for nome, fila in (("a.json", roteiro.gerar(persona, "vida em SP", 12)),
-                       ("b.json", genjutsu.gerar(persona, "swap_produto", "v.mp4", "a.png", 3))):
+                       ("b.json", genjutsu.gerar(persona, "swap_produto", "v.mp4", "a.png", 3)),
+                       ("c.json", roteiro.gerar_sequencia(persona, "vida em SP", 3))):
         save_fila(tmp_path / nome, fila)
         arquivos.append(str(tmp_path / nome))
     js = ("import {parseQueue,parsePersona} from %s;import fs from 'fs';"
@@ -279,3 +300,49 @@ def test_estado_do_plugin_alimenta_pos_e_veo(persona, tmp_path):
     (tmp_path / "y.mp4").write_bytes(b"2")
     out = pos_producao.processar(tmp_path, fila, "2026-10-18")
     assert all(fila["itens"][1]["id"] not in n for n in out["renomeados"])
+
+
+# ---------- sequência (imagem -> 1º frame -> vídeos encadeados no Flow) ----------
+def test_sequencia_imagem_sem_fala_e_encadeamento(persona):
+    fila = roteiro.gerar_sequencia(persona, "vida em SP", beats=3, look_id="look1")
+    validate("fila", fila)
+    ref, frame1, *videos = fila["itens"]
+    assert [i["tipo"] for i in fila["itens"]] == ["imagem", "imagem", "veo", "veo", "veo"]
+    assert [i["ordem"] for i in fila["itens"]] == [0, 1, 2, 3, 4]
+    assert len({i["sequencia_id"] for i in fila["itens"]}) == 1
+    assert all(i["look_id"] == "look1" for i in fila["itens"])
+    for img in (ref, frame1):  # imagem: sem fala, sem câmera, características completas, 9:16
+        assert img["fala"] == "" and "Fala" not in img["prompt_final"] and img["duracao_s"] == 0
+        assert persona["bloco_fixo"] in img["prompt_final"] and persona["looks"][0]["descricao"] in img["prompt_final"]
+        assert img["flow"] == {"modo": "imagem", "proporcao": "9:16", "submodo": None}
+    assert "Fundo neutro" in ref["prompt_final"] and ref["frame_inicial"] == ""
+    assert frame1["frame_inicial"] == f"item:{ref['id']}" and frame1["cena"] in frame1["prompt_final"]
+    assert videos[0]["frame_inicial"] == f"item:{frame1['id']}"
+    assert videos[1]["frame_inicial"] == f"ultimo_frame:{videos[0]['id']}"
+    assert videos[2]["frame_inicial"] == f"ultimo_frame:{videos[1]['id']}"
+    assert all(v["flow"] == {"modo": "video", "proporcao": "9:16", "submodo": "frames", "modelo": "Omni 1.1 Flash",
+                             "resolucao": "720p"} and v["duracao_s"] == 10 for v in videos)
+    assert roteiro.CONTINUIDADE not in videos[0]["prompt_final"]
+    assert all(roteiro.CONTINUIDADE in v["prompt_final"] and v["fala"] for v in videos[1:])
+
+
+def test_sequencia_ids_estaveis_e_beats_validos(persona):
+    a = roteiro.gerar_sequencia(persona, "vida em SP", 2)
+    b = roteiro.gerar_sequencia(persona, "vida em SP", 2)
+    assert [i["id"] for i in a["itens"]] == [i["id"] for i in b["itens"]]
+    assert len({i["id"] for i in a["itens"]}) == 4
+    with pytest.raises(ValueError):
+        roteiro.gerar_sequencia(persona, "x", 0)
+
+
+def test_cli_sequencia_e_imagens_fora_de_veo_e_pos(persona_path, persona, tmp_path, capsys):
+    out = tmp_path / "seq.json"
+    assert main(["sequencia", "--persona", persona_path, "--nicho", "vida em SP", "--beats", "2", "--out", str(out)]) == 0
+    fila = load_fila(out)
+    assert len(fila["itens"]) == 4
+    res = auto_veo.executar(fila, tmp_path, cfg_teste(), dry_run=True)
+    assert res["ignorados"] == [i["id"] for i in fila["itens"] if i["tipo"] == "imagem"]
+    assert len(res["pendentes"]) == 2
+    (tmp_path / "a.mp4").write_bytes(b"1")
+    renomeados = pos_producao.processar(tmp_path, fila, "2026-10-18")["renomeados"]
+    assert len(renomeados) == 1 and fila["itens"][2]["id"] in renomeados[0]
