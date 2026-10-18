@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "persona_id": "luna",
+  "gerado_em": "2026-10-18T12:00:00Z",
+  "itens": [
+    {
+      "id": "luna-001",
+      "tipo": "veo",
+      "modo": null,
+      "look_id": "look1",
+      "cena": "Luna entra na kitnet e encontra uma caixa misteriosa.",
+      "hook": "O que chegou aqui?",
+      "fala": "Eu não encomendei isso.",
+      "camera": "Selfie vertical, aproximação lenta.",
+      "duracao_s": 8,
+      "prompt_final": "Luna abre a porta da kitnet, encontra uma caixa misteriosa e reage em português brasileiro.",
+      "negative_prompt": "different face",
+      "anexos": {"imagem_ancora": "luna.png", "video_fonte": ""},
+      "legenda": "Uma caixa apareceu na minha porta",
+      "hashtags": ["#Luna", "#IA"],
+      "status": "pendente"
+    },
+    {
+      "id": "luna-002",
+      "tipo": "genjutsu",
+      "modo": "motion",
+      "look_id": "look2",
+      "cena": "Luna repete uma dança gravada pela equipe.",
+      "hook": "Ela aprendeu a dança?",
+      "fala": "",
+      "camera": "Idêntica ao vídeo fonte.",
+      "duracao_s": 8,
+      "prompt_final": "",
+      "negative_prompt": "choreography drift",
+      "anexos": {"imagem_ancora": "luna.png", "video_fonte": "danca_propria.mp4"},
+      "legenda": "Luna repetiu a dança",
+      "hashtags": ["#Luna", "#Genjutsu", "#IA"],
+      "status": "pendente"
+    }
+  ]
+}

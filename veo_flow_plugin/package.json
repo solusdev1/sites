@@ -1,0 +1,13 @@
+{
+  "name": "veo-flow-copiloto",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check:manifest": "node scripts/check-manifest.js"
+  },
+  "devDependencies": {
+    "jsdom": "^27.0.0"
+  }
+}

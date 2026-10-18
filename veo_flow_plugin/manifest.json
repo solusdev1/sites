@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Flow Copiloto · Luna",
+  "version": "1.0.0",
+  "description": "Importa filas de prompts e preenche manualmente o Flow ou Gemini, sem iniciar a geração.",
+  "permissions": ["storage", "activeTab"],
+  "action": {
+    "default_title": "Flow Copiloto",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://labs.google/fx/tools/flow*", "https://gemini.google.com/*"],
+      "js": ["src/field-selection.js", "src/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
