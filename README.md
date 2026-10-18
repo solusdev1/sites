@@ -16,6 +16,14 @@ python -m pytest -q
 `schemas/persona.schema.json` e `schemas/fila.schema.json`. O `prompt_final` (bloco_fixo + look + cena + câmera + fala + estilo)
 vem pronto do Python; o plugin só injeta. Exemplos válidos: `data/exemplos/fila.exemplo.json`, `fila_genjutsu.exemplo.json`.
 
+## Integração com o plugin (veo_flow_plugin)
+1. `roteiro` / `genjutsu` geram `fila.json` → no popup do plugin, **Importar fila** (e `data/personas/luna.json` se algum `prompt_final` vier vazio).
+2. No Flow: **Preencher próximo**, anexar imagem âncora/vídeo fonte, Generate, e marcar o item como `gerado` ou `descartado`.
+3. **Exportar estado** gera `fila_estado.json` (mesmo contrato, com `status`: pendente|preenchido|gerado|descartado + `persona`).
+4. `python -m veo_pipeline pos --pasta <downloads> --fila fila_estado.json` renomeia os MP4 (casa por id no nome ou por ordem), pula itens `descartado` e gera legenda+disclosure+`quarentena.csv`.
+5. `veo --fila fila_estado.json` (rota API) pula itens `gerado`/`descartado`.
+Teste de contrato: `tests/test_pipeline.py::test_plugin_aceita_filas_do_python` roda o `parseQueue` do plugin (node) sobre as filas geradas aqui.
+
 ## Módulos
 - `persona.py` — carrega/valida persona, monta `prompt_final`. Arquétipos: relatable_cidade_grande (alias `relatable`), fit, luxo_viagem, foodie, review_tech, serial_lore.
 - `roteiro.py` — templates offline por arquétipo; formatos: série com cliffhanger, POV serializado, memórias, resposta a comentário. Com `GEMINI_API_KEY` usa google-genai (import lazy), com fallback offline em qualquer erro.

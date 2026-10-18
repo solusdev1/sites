@@ -31,7 +31,7 @@
           },
           "legenda": {"type": "string"},
           "hashtags": {"type": "array", "items": {"type": "string"}},
-          "status": {"type": "string"}
+          "status": {"enum": ["pendente", "preenchido", "gerado", "descartado"]}
         }
       }
     }

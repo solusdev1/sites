@@ -242,3 +242,40 @@ def test_cli_ponta_a_ponta(persona_path, tmp_path, monkeypatch, capsys):
 def test_exemplo_valido():
     ex = Path(__file__).resolve().parent.parent / "data" / "exemplos" / "fila.exemplo.json"
     validate("fila", json.loads(ex.read_text(encoding="utf-8")))
+
+
+# ---------- integracao com o plugin (veo_flow_plugin) ----------
+PLUGIN = Path(__file__).resolve().parent.parent / "veo_flow_plugin"
+
+
+def test_plugin_aceita_filas_do_python(persona, tmp_path):
+    import shutil
+    import subprocess
+    if not shutil.which("node") or not (PLUGIN / "src" / "queue.js").is_file():
+        pytest.skip("node/plugin indisponivel")
+    arquivos = []
+    for nome, fila in (("a.json", roteiro.gerar(persona, "vida em SP", 12)),
+                       ("b.json", genjutsu.gerar(persona, "swap_produto", "v.mp4", "a.png", 3))):
+        save_fila(tmp_path / nome, fila)
+        arquivos.append(str(tmp_path / nome))
+    js = ("import {parseQueue,parsePersona} from %s;import fs from 'fs';"
+          "for (const f of process.argv.slice(1)) parseQueue(fs.readFileSync(f,'utf8'));"
+          "parsePersona(fs.readFileSync(%s,'utf8'));console.log('ok')"
+          % (json.dumps((PLUGIN / "src" / "queue.js").as_uri()),
+             json.dumps(str(Path(__file__).resolve().parent.parent / "data" / "personas" / "luna.json"))))
+    r = subprocess.run(["node", "--input-type=module", "-e", js, *arquivos], capture_output=True, text=True)
+    assert r.returncode == 0 and "ok" in r.stdout, r.stderr
+
+
+def test_estado_do_plugin_alimenta_pos_e_veo(persona, tmp_path):
+    fila = roteiro.gerar(persona, "x", 3)
+    fila["persona"] = persona  # fila_estado.json exportado pelo plugin carrega persona
+    fila["itens"][0]["status"] = "gerado"
+    fila["itens"][1]["status"] = "descartado"
+    validate("fila", fila)
+    res = auto_veo.executar(fila, tmp_path, cfg_teste(), dry_run=True)
+    assert res["pendentes"] == [fila["itens"][2]["id"]]
+    (tmp_path / "x.mp4").write_bytes(b"1")
+    (tmp_path / "y.mp4").write_bytes(b"2")
+    out = pos_producao.processar(tmp_path, fila, "2026-10-18")
+    assert all(fila["itens"][1]["id"] not in n for n in out["renomeados"])

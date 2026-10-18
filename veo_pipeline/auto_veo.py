@@ -84,6 +84,9 @@ def executar(fila: dict, out_dir: str | Path, cfg: Config, *, dry_run: bool = Fa
         if it["tipo"] != "veo":
             log.warning("item %s (%s) ignorado: vídeo→vídeo não é suportado pela rota API", it["id"], it["tipo"])
             resumo["ignorados"].append(it["id"])
+        elif it.get("status") in ("descartado", "gerado"):
+            log.info("item %s com status %s no plugin, pulando", it["id"], it["status"])
+            resumo["pulados"].append(it["id"])
         elif mp4.is_file():
             log.info("item %s já gerado, pulando", it["id"])
             resumo["pulados"].append(it["id"])

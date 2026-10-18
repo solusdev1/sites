@@ -41,8 +41,10 @@ def _casar(mp4s: list[Path], itens: list[dict]) -> list[tuple[Path, dict]]:
 def processar(pasta: str | Path, fila: dict, data: str | None = None) -> dict:
     pasta = Path(pasta)
     data = data or date.today().isoformat()
+    # fila_estado.json do plugin: itens descartados na quarentena nunca recebem arquivo
+    itens = [i for i in fila["itens"] if i.get("status") != "descartado"]
     mp4s = sorted(p for p in pasta.glob("*.mp4") if not p.stem.startswith(data))
-    pares = _casar(mp4s, fila["itens"])
+    pares = _casar(mp4s, itens)
     linhas, renomeados = [], []
     for p, it in pares:
         novo = pasta / f"{data}_{it['id']}.mp4"
