@@ -1,4 +1,4 @@
-import { emptyState, mergeQueue, parseQueue, parsePersona, setPersona, nextPending, markStatus } from './queue.js';
+import { emptyState, mergeQueue, parseQueue, parsePersona, setPersona, nextStep, markStatus } from './queue.js';
 import { buildPrompt, requiredAttachments } from './prompt.js';
 
 const STORAGE_KEY = 'veoFlowState';
@@ -47,7 +47,8 @@ function renderItem(item, index) {
   top.append(title, status);
   const meta = document.createElement('p');
   meta.className = 'item-meta';
-  meta.textContent = `${item.tipo === 'genjutsu' ? `Genjutsu / ${item.modo}` : 'Veo'} · ${item.duracao_s}s · ${item.look_id}`;
+  const kind = item.tipo === 'imagem' ? 'Imagem' : item.tipo === 'genjutsu' ? `Genjutsu / ${item.modo}` : 'Veo';
+  meta.textContent = item.tipo === 'imagem' ? `${kind} · ${item.flow?.proporcao || ''} · ${item.look_id}` : `${kind} · ${item.duracao_s}s · ${item.look_id}`;
   const attachments = document.createElement('ul');
   attachments.className = 'attachments';
   for (const attachment of requiredAttachments(item)) {
@@ -57,6 +58,7 @@ function renderItem(item, index) {
   }
   const actions = document.createElement('div');
   actions.className = 'item-actions';
+  if (item.flow?.modo === 'video' && item.status === 'preenchido') actions.append(button('Gerar vídeo (usa créditos)', () => generateVideo(item)));
   if (item.status !== 'gerado') actions.append(button('Marcar gerado', () => updateStatus(item.id, 'gerado')));
   if (item.status !== 'descartado') actions.append(button('Descartar', () => updateStatus(item.id, 'descartado')));
   if (item.status !== 'pendente') actions.append(button('Voltar a pendente', () => updateStatus(item.id, 'pendente')));
@@ -65,13 +67,21 @@ function renderItem(item, index) {
   return row;
 }
 
+function stepLabel(item) {
+  if (!item?.flow) return 'Preencher próximo';
+  if (item.tipo === 'genjutsu') return 'Escolher vídeo fonte e preparar genjutsu';
+  if (item.tipo === 'imagem') return 'Gerar imagem (0 créditos)';
+  return item.frame_inicial?.startsWith('ultimo_frame:') ? 'Preparar vídeo a partir do último frame' : 'Preparar vídeo';
+}
+
 function render() {
   const pending = state.itens.filter(item => item.status === 'pendente').length;
+  const {item: next} = nextStep(state);
   $('#persona-name').textContent = state.persona?.nome || state.persona_id || 'Sem persona';
   $('#queue-count').textContent = `${state.itens.length} ${state.itens.length === 1 ? 'item' : 'itens'}`;
   $('#pending-count').textContent = `${pending} ${pending === 1 ? 'pendente' : 'pendentes'}`;
   $('#fill-next').disabled = busy || pending === 0;
-  $('#fill-next').textContent = busy ? 'Preenchendo…' : 'Preencher próximo';
+  $('#fill-next').textContent = busy ? 'Executando…' : stepLabel(next);
   $('#export-state').disabled = state.itens.length === 0 && !state.persona;
   $('#clear-state').disabled = state.itens.length === 0 && !state.persona;
   const list = $('#queue-list');
@@ -106,30 +116,112 @@ async function importPersona(file) {
   $('#persona-file').value = '';
 }
 
-function supportedTab(url) {
+function supportedTab(url, item) {
   try {
     const parsed = new URL(url);
+    if (item?.flow) return parsed.origin === 'https://flow.google.com';
     return (parsed.origin === 'https://labs.google' && parsed.pathname.startsWith('/fx/tools/flow')) || parsed.origin === 'https://flow.google.com' || parsed.origin === 'https://gemini.google.com';
   } catch { return false; }
 }
 
+async function flowTab(item) {
+  const [tab] = await chrome.tabs.query({active:true, currentWindow:true});
+  if (!tab?.id || !supportedTab(tab.url, item))
+    throw new Error(item?.flow ? 'Abra um projeto em flow.google.com antes de executar.' : 'Abra uma aba do Google Flow ou Gemini antes de preencher.');
+  return tab;
+}
+
+async function send(tab, message) {
+  try { return await chrome.tabs.sendMessage(tab.id, message); }
+  catch { throw new Error('Não foi possível acessar o editor. Recarregue a aba do Flow ou Gemini e tente novamente.'); }
+}
+
+const MAX_SOURCE_S = 10.5;
+
+function videoDuration(file) {
+  return new Promise(resolve => {
+    const video = document.createElement('video');
+    const url = URL.createObjectURL(file);
+    const done = value => { URL.revokeObjectURL(url); resolve(value); };
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => done(video.duration);
+    video.onerror = () => done(null);
+    video.src = url;
+  });
+}
+
+function readDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Não foi possível ler o vídeo fonte.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Genjutsu: o vídeo fonte vem do computador do usuário (a extensão não lê arquivos sozinha).
+async function chooseSource(file) {
+  $('#video-file').value = '';
+  if (!file) return;
+  const duration = await videoDuration(file);
+  if (duration && duration > MAX_SOURCE_S) {
+    feedback(`O vídeo tem ${duration.toFixed(1)}s; o Flow aceita até 10s. Use "python -m veo_pipeline genjutsu ... --preparar-fonte" (corta e tira o áudio).`, 'error');
+    return;
+  }
+  pendingVideo = {name:file.name, type:file.type, data: await readDataUrl(file)};
+  fillNext();
+}
+
+let pendingVideo = null;
+
 async function fillNext() {
-  const item = nextPending(state);
+  const {item, blockedBy} = nextStep(state);
   if (!item || busy) return;
+  if (blockedBy) { feedback(`Antes, gere e confira "${blockedBy.hook}" (status: ${blockedBy.status}).`, 'error'); return; }
+  if (item.tipo === 'genjutsu' && item.flow && !pendingVideo) { $('#video-file').click(); return; }
   busy = true;
   render();
   try {
     const prompt = buildPrompt(item, state.persona);
-    const [tab] = await chrome.tabs.query({active:true, currentWindow:true});
-    if (!tab?.id || !supportedTab(tab.url)) throw new Error('Abra uma aba do Google Flow ou Gemini antes de preencher.');
-    let result;
-    try { result = await chrome.tabs.sendMessage(tab.id, {type:'FILL_PROMPT', prompt}); }
-    catch { throw new Error('Não foi possível acessar o editor. Recarregue a aba do Flow ou Gemini e tente novamente.'); }
+    const tab = await flowTab(item);
+    if (item.flow) {
+      if (item.tipo === 'imagem') feedback('Gerando a imagem no Flow… pode fechar o popup; o status atualiza sozinho.');
+      else if (item.frame_inicial?.startsWith('ultimo_frame:')) feedback('Capturando o último frame do vídeo anterior e enviando para o Início…');
+      else if (item.tipo === 'genjutsu') feedback(`Enviando ${pendingVideo.name} e a personagem para o Flow… pode levar um minuto.`);
+      const video = item.tipo === 'genjutsu' ? pendingVideo : null;
+      pendingVideo = null;
+      const result = await send(tab, {type:'RUN_STEP', item, prompt, video});
+      if (!result?.ok) throw new Error(result?.error || 'O Flow não confirmou o passo.');
+      await reload();
+      feedback(result.next);
+      return;
+    }
+    const result = await send(tab, {type:'FILL_PROMPT', prompt});
     if (!result?.ok) throw new Error(result?.error || 'O editor não confirmou o preenchimento.');
     await save(markStatus(state, item.id, 'preenchido'));
     feedback(`Prompt ${item.id} preenchido. Anexe os arquivos e clique em Generate na página.`);
   } catch (error) { feedback(error.message, 'error'); }
   finally { busy = false; render(); }
+}
+
+async function generateVideo(item) {
+  if (busy || !window.confirm(`Gerar o vídeo "${item.hook}" no Flow? Isso usa créditos da sua assinatura.`)) return;
+  busy = true;
+  render();
+  feedback('Gerando o vídeo no Flow (leva alguns minutos). Pode fechar o popup; o status vira "gerado" quando o vídeo aparecer.');
+  try {
+    const result = await send(await flowTab(item), {type:'GENERATE_VIDEO', item});
+    if (!result?.ok) throw new Error(result?.error || 'O Flow não iniciou a geração.');
+    await reload();
+    feedback('Vídeo gerado. O próximo passo captura o último frame dele automaticamente.');
+  } catch (error) { feedback(error.message, 'error'); }
+  finally { busy = false; render(); }
+}
+
+async function reload() {
+  const stored = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY];
+  if (stored?.version === 1 && Array.isArray(stored.itens)) state = stored;
+  render();
 }
 
 function exportState() {
@@ -157,8 +249,11 @@ $('#import-persona-button').addEventListener('click', () => $('#persona-file').c
 $('#queue-file').addEventListener('change', event => importQueue(event.target.files?.[0]));
 $('#persona-file').addEventListener('change', event => importPersona(event.target.files?.[0]));
 $('#fill-next').addEventListener('click', fillNext);
+$('#video-file').addEventListener('change', event => chooseSource(event.target.files?.[0]));
 $('#export-state').addEventListener('click', exportState);
 $('#clear-state').addEventListener('click', clearState);
+chrome.runtime.onMessage.addListener(message => { if (message?.type === 'FLOW_NOTICE') feedback(message.text, 'error'); });
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[STORAGE_KEY] && !busy) reload(); });
 
 try {
   const stored = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY];

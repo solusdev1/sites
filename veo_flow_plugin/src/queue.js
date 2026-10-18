@@ -1,5 +1,7 @@
 export const STATUSES = Object.freeze(['pendente', 'preenchido', 'gerado', 'descartado']);
 const MODES = [null, 'motion', 'swap_produto', 'restyle'];
+const RATIOS = ['16:9', '4:3', '1:1', '3:4', '9:16'];
+const FRAME = /^(|item:\S+|ultimo_frame:\S+)$/;
 
 function fail(path, description) { throw new Error(`${path}: ${description}`); }
 function object(value, path) {
@@ -29,17 +31,26 @@ function validateItem(item, index) {
   const path = `itens[${index}]`;
   object(item, path);
   string(item.id, `${path}.id`, false);
-  if (!['veo','genjutsu'].includes(item.tipo)) fail(`${path}.tipo`, 'deve ser veo ou genjutsu');
-  if (!MODES.includes(item.modo) || (item.tipo === 'veo' && item.modo !== null) || (item.tipo === 'genjutsu' && item.modo === null))
+  if (!['veo','genjutsu','imagem'].includes(item.tipo)) fail(`${path}.tipo`, 'deve ser veo, genjutsu ou imagem');
+  if (!MODES.includes(item.modo) || (item.tipo !== 'genjutsu' && item.modo !== null) || (item.tipo === 'genjutsu' && item.modo === null))
     fail(`${path}.modo`, 'incompatível com tipo');
   for (const field of ['look_id','cena','hook','fala','camera','prompt_final','negative_prompt','legenda'])
     string(item[field], `${path}.${field}`, field !== 'look_id');
-  if (!Number.isFinite(item.duracao_s) || item.duracao_s <= 0) fail(`${path}.duracao_s`, 'deve ser positivo');
+  if (!Number.isFinite(item.duracao_s) || item.duracao_s < 0 || (item.tipo !== 'imagem' && item.duracao_s === 0)) fail(`${path}.duracao_s`, 'deve ser positivo');
   object(item.anexos, `${path}.anexos`);
   string(item.anexos.imagem_ancora, `${path}.anexos.imagem_ancora`);
   string(item.anexos.video_fonte, `${path}.anexos.video_fonte`);
   if (!Array.isArray(item.hashtags) || item.hashtags.some(tag => typeof tag !== 'string')) fail(`${path}.hashtags`, 'deve ser lista de textos');
   if (!STATUSES.includes(item.status)) fail(`${path}.status`, 'status inválido');
+  if (item.flow !== undefined) {
+    object(item.flow, `${path}.flow`);
+    if (!['imagem','video'].includes(item.flow.modo)) fail(`${path}.flow.modo`, 'deve ser imagem ou video');
+    if (!RATIOS.includes(item.flow.proporcao)) fail(`${path}.flow.proporcao`, 'proporção inválida');
+    if (![null,'frames','elementos'].includes(item.flow.submodo)) fail(`${path}.flow.submodo`, 'submodo inválido');
+    if (item.flow.modelo !== undefined) string(item.flow.modelo, `${path}.flow.modelo`, false);
+    if (item.flow.resolucao !== undefined && !['360p','720p','1080p'].includes(item.flow.resolucao)) fail(`${path}.flow.resolucao`, 'resolução inválida');
+    if (typeof item.frame_inicial !== 'string' || !FRAME.test(item.frame_inicial)) fail(`${path}.frame_inicial`, 'formato inválido');
+  }
 }
 
 export function validateQueue(queue) {
@@ -94,6 +105,15 @@ export function setPersona(state, persona) {
 }
 
 export function nextPending(state) { return state.itens.find(item => item.status === 'pendente') || null; }
+
+// Próximo passo respeitando a sequência: um item com frame_inicial só roda depois que o item de origem foi gerado.
+export function nextStep(state) {
+  const item = nextPending(state);
+  if (!item) return {item:null, blockedBy:null};
+  const source = item.frame_inicial?.split(':')[1];
+  const origin = source && state.itens.find(other => other.id === source);
+  return {item, blockedBy: origin && origin.status !== 'gerado' ? origin : null};
+}
 
 export function markStatus(state, id, status) {
   if (!STATUSES.includes(status)) throw new Error('Status inválido.');

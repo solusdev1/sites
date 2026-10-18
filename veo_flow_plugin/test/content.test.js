@@ -78,3 +78,10 @@ test('reconhece o editor ProseMirror do Flow (flow.google.com) pelo aria-label "
   assert.equal(field.textContent, 'Luna chega na kitnet');
   assert.equal(window.document.querySelector('.search-input').value, '');
 });
+
+test('reconhece o editor do modo Estender ("Qual é a próxima etapa?") em vez da busca', async () => {
+  const {window, message} = page('<input class="search-input" aria-label="Pesquisar"><div class="ProseMirror" contenteditable="true" role="textbox" aria-label="Qual é a próxima etapa?"><p><br></p></div>');
+  assert.equal(window.FlowFieldSelection.findPromptField(window.document).getAttribute('aria-label'), 'Qual é a próxima etapa?');
+  assert.equal((await message({type:'FILL_PROMPT', prompt:'Siga-nos'})).ok, true);
+  assert.equal(window.document.querySelector('.search-input').value, '');
+});

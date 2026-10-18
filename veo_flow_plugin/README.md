@@ -21,14 +21,28 @@ Não é necessário instalar dependências para usar a extensão. `npm.cmd insta
 
 O estado fica em `chrome.storage.local`. A extensão não faz requisições externas, não envia telemetria e não coleta cookies. As permissões são `storage` e `activeTab`; o content script só roda nas páginas de Flow e Gemini definidas no manifest.
 
+## Modo sequência (imagem → vídeo → estender)
+
+Gere a fila com `python -m veo_pipeline sequencia --persona data/personas/luna.json --nicho "vida em SP" --beats 3 --out fila_sequencia.json`. Ela traz, em ordem: a imagem de referência da personagem (sem fala, fundo neutro), o primeiro frame da cena e os vídeos de 8s. No projeto aberto em flow.google.com, use **Executar próximo passo**:
+
+1. **Imagens**: a extensão troca o Flow para Imagem 9:16, anexa a referência quando o item pede, preenche e **gera sozinha, mas só se o Flow mostrar 0 créditos**. Se o Flow cobrar, ela só preenche. Confira a imagem e, se não ficou fiel à persona, use **Voltar a pendente** e execute de novo.
+2. **Vídeo 1**: Vídeo → Frames 9:16, **Omni 1.1 Flash, 720p, 10s** (configurável no `flow` do item), coloca no Início a imagem mais recente do projeto e preenche. Gere pelo botão **Gerar vídeo** do item (pede confirmação, usa créditos). O item só vira `gerado` quando o vídeo novo aparece no projeto; se o Flow falhar sem aviso, o popup mostra erro.
+3. **Vídeos seguintes**: a extensão abre o vídeo anterior (o que estiver aberto no editor, ou o mais recente do projeto), pula para o fim, lê o **último frame** direto do player (nada é baixado), volta ao projeto, envia o frame pelo **Enviar mídia** do Início e preenche o prompt de continuação. Não usa "Estender". No primeiro envio, o Flow mostra o aviso **Direitos de uso desta imagem**: quem clica em **Concordo** é você; a extensão espera.
+
+### Genjutsu (vídeo → vídeo)
+
+Gere a fila com `python -m veo_pipeline genjutsu --modo motion --video-fonte trend.mp4 --preparar-fonte --qtd 1 --out fila_genjutsu.json`. O `--preparar-fonte` cria `trend_mudo.mp4`, sem áudio e com até 10s, porque com áudio o Flow recusa com "Não é possível editar a fala neste vídeo". No popup, **Escolher vídeo fonte e preparar genjutsu** pede o arquivo `_mudo.mp4`. Vídeos com mais de 10s são recusados no próprio popup. A extensão configura Vídeo → Elementos · Omni 1.1 Flash · 720p · 9:16, envia o vídeo pelo "+" → Vídeos (aviso "Direitos de uso deste vídeo": você clica em Concordo), anexa a imagem âncora pelo nome, ou a imagem mais recente do projeto, e preenche o prompt. Com vídeo de referência o Flow cobra mais (20 créditos em 2026-10-18); o popup mostra o custo lido do Flow. Use apenas vídeos sobre os quais você tem direitos.
+
+Um passo só roda depois que o item de origem estiver `gerado`. As ações no DOM ficam em `src/flow-actions.js`. O envio do frame usa `src/page-upload.js`, que roda no contexto da página do Flow (só em flow.google.com) e só intercepta o seletor de arquivos quando a extensão o arma, uma vez.
+
 ## Contrato de dados
 
-Aceita filas `version: 1` com `persona_id`, `gerado_em` e `itens` no formato do pipeline Python. Tipos: `veo` (`modo: null`) e `genjutsu` (`modo: motion`, `swap_produto` ou `restyle`). Status: `pendente`, `preenchido`, `gerado`, `descartado`. A extensão usa `prompt_final` exatamente como veio do pipeline, sem acrescentar texto. Se ele estiver vazio, usa a persona importada para o fallback descrito acima.
+Aceita filas `version: 1` com `persona_id`, `gerado_em` e `itens` no formato do pipeline Python. Tipos: `imagem` e `veo` (`modo: null`) e `genjutsu` (`modo: motion`, `swap_produto` ou `restyle`). Status: `pendente`, `preenchido`, `gerado`, `descartado`. A extensão usa `prompt_final` exatamente como veio do pipeline, sem acrescentar texto. Se ele estiver vazio, usa a persona importada para o fallback descrito acima.
 
 ## Limitações e cuidados
 
 - O DOM do Flow e do Gemini muda. A busca pelo campo usa três estratégias, mas pode precisar de ajuste em `src/field-selection.js` se a interface mudar ou o editor estiver dentro de um iframe não coberto.
-- As interfaces de assinatura têm regras próprias e existe uma zona cinzenta nos termos de uso para automações. Por isso, a extensão não clica em **Generate**, não automatiza anexos, não usa APIs internas e não gerencia sessão.
+- As interfaces de assinatura têm regras próprias e existe uma zona cinzenta nos termos de uso para automações. A extensão só clica em gerar sozinha para imagens de 0 créditos; vídeos sempre pedem sua confirmação. Ela não usa APIs internas e não gerencia sessão.
 - O preenchimento do prompt não garante consistência visual. Confira a imagem âncora, o rosto, a voz, o produto e os direitos do vídeo fonte antes da geração e publicação.
 - Marque conteúdo sintético/gerado por IA na plataforma onde publicar.
 

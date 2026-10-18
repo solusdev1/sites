@@ -1,7 +1,7 @@
 // Isolado da API Chrome: a ordem das estratégias pode ser ajustada se o DOM do Flow mudar.
 (function (global) {
   const EDITABLE = 'textarea, input[type="text"], input:not([type]), [contenteditable="true"], [contenteditable=""], [role="textbox"]';
-  const PROMPT_LABEL = /prompt|descreva|describe|imaginar|imagine|mensagem|message|quer criar|want to create/i;
+  const PROMPT_LABEL = /prompt|descreva|describe|imaginar|imagine|mensagem|message|quer criar|want to create|pr[oó]xima etapa|next step/i;
 
   function visible(element, win) {
     if (element.disabled || element.readOnly) return false;

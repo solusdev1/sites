@@ -14,5 +14,6 @@ const popup = readFileSync(resolve(root, manifest.action.default_popup), 'utf8')
 for (const match of popup.matchAll(/(?:href|src)="([^"]+)"/g)) files.push(match[1]);
 for (const file of files) assert.ok(existsSync(resolve(root, file)), `Arquivo ausente: ${file}`);
 assert.ok(manifest.content_scripts.some(({matches}) => matches.some(m => m.startsWith('https://labs.google/fx/tools/flow'))));
+assert.ok(manifest.content_scripts.some(({matches}) => matches.includes('https://flow.google.com/*')));
 assert.ok(manifest.content_scripts.some(({matches}) => matches.includes('https://gemini.google.com/*')));
 console.log('Manifest MV3 válido; arquivos e escopos conferidos.');

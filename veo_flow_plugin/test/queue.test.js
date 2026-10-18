@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseQueue, validatePersona, mergeQueue, nextPending, markStatus, emptyState } from '../src/queue.js';
+import { parseQueue, validatePersona, validateQueue, mergeQueue, nextPending, nextStep, markStatus, emptyState } from '../src/queue.js';
 import { buildPrompt, requiredAttachments } from '../src/prompt.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/fila.exemplo.json', import.meta.url), 'utf8'));
@@ -40,4 +40,24 @@ test('usa prompt_final pronto e monta fallback mínimo com persona', () => {
   assert.throws(() => buildPrompt(fixture.itens[1], null), /persona/i);
   assert.deepEqual(requiredAttachments(fixture.itens[0]), ['Imagem âncora: luna.png']);
   assert.deepEqual(requiredAttachments(fixture.itens[1]), ['Imagem âncora: luna.png', 'Vídeo fonte: danca_propria.mp4']);
+});
+
+test('sequência: aceita imagem e nextStep só libera um item depois que a origem foi gerada', () => {
+  const base = {modo:null, look_id:'look1', cena:'', hook:'h', fala:'', camera:'', prompt_final:'p', negative_prompt:'', anexos:{imagem_ancora:'', video_fonte:''}, legenda:'', hashtags:[], status:'pendente', sequencia_id:'s'};
+  const queue = {version:1, persona_id:'luna', gerado_em:'2026-10-18T00:00:00+00:00', itens:[
+    {...base, id:'ref', tipo:'imagem', duracao_s:0, flow:{modo:'imagem', proporcao:'9:16', submodo:null}, frame_inicial:'', ordem:0},
+    {...base, id:'v1', tipo:'veo', duracao_s:8, flow:{modo:'video', proporcao:'9:16', submodo:'frames'}, frame_inicial:'item:ref', ordem:1},
+    {...base, id:'v2', tipo:'veo', duracao_s:8, flow:{modo:'video', proporcao:'9:16', submodo:'frames'}, frame_inicial:'ultimo_frame:v1', ordem:2}
+  ]};
+  let state = mergeQueue(emptyState(), validateQueue(queue)).state;
+  assert.equal(nextStep(state).item.id, 'ref');
+  state = markStatus(state, 'ref', 'preenchido');
+  assert.deepEqual([nextStep(state).item.id, nextStep(state).blockedBy.id], ['v1', 'ref']);
+  state = markStatus(state, 'ref', 'gerado');
+  assert.equal(nextStep(state).blockedBy, null);
+  state = markStatus(state, 'v1', 'preenchido');
+  assert.equal(nextStep(state).item.id, 'v2');
+  assert.equal(nextStep(state).blockedBy.id, 'v1');
+  assert.throws(() => validateQueue({...queue, itens:[{...queue.itens[1], frame_inicial:'qualquer'}]}), /frame_inicial/);
+  assert.throws(() => validateQueue({...queue, itens:[{...queue.itens[1], duracao_s:0}]}), /duracao_s/);
 });

@@ -1,0 +1,309 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { JSDOM } from 'jsdom';
+
+const read = name => readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8');
+const scripts = ['field-selection.js', 'flow-actions.js', 'content.js'].map(read);
+
+// Flow falso com o comportamento mapeado no Flow real (2026-10-18): menu de radios do Angular CDK que fecha com
+// Escape no body, seletor de mídia com abas/opções/"Incluir no comando", geração com "%" e Estender no editor de cena.
+function flow({credits = {imagem: 0, video: 15}, videos = 0, failSilently = false, rights = true, images = ['Woman standing in studio']} = {}) {
+  const dom = new JSDOM(`<main><div class="grid"></div><div class="editor"></div></main>
+    <div class="base-prompt-box"><div class="slots"></div>
+      <div class="ProseMirror" contenteditable="true" role="textbox" aria-label="O que você quer criar?"><p><br></p></div>
+      <button aria-label="Adicionar elementos à caixa de comando">add</button>
+      <button aria-label="Gatilho de configurações">cfg</button>
+      <button aria-label="Iniciar geração" disabled>arrow_forward</button></div>
+    <div class="cdk-overlay-container"></div>`, {url:'https://flow.google.com/project/x', runScripts:'outside-only'});
+  const {window} = dom, doc = window.document;
+  const store = {};
+  const log = [];
+  window.chrome = {storage:{local:{get: async key => ({[key]: store[key]}), set: async obj => Object.assign(store, obj)}}};
+  const overlay = doc.querySelector('.cdk-overlay-container');
+  const box = doc.querySelector('.base-prompt-box');
+  const generate = box.querySelector('[aria-label="Iniciar geração"]');
+  const config = {modo:'imagem', submodo:'elementos', proporcao:'16:9', modelo:'Veo 3.1 - Lite', resolucao:'360p', duracao:'8s'};
+  const editor = box.querySelector('.ProseMirror');
+  const refreshButton = () => { generate.disabled = !editor.textContent.trim(); };
+  editor.addEventListener('input', refreshButton);
+
+  function radio(group, label, icon) {
+    const b = doc.createElement('button');
+    b.setAttribute('role', 'radio');
+    b.textContent = `${icon} ${label}`;
+    b.setAttribute('aria-checked', String(config[group] === label));
+    b.addEventListener('click', () => { config[group] = label; log.push(`radio:${label}`); renderMenu(); });
+    return b;
+  }
+  function renderMenu() {
+    overlay.replaceChildren();
+    const modes = {Imagem:'imagem', 'Vídeo':'video'};
+    for (const label of Object.keys(modes)) {
+      const b = radio('modo', label, label === 'Imagem' ? 'image' : 'videocam');
+      b.setAttribute('aria-checked', String(config.modo === modes[label]));
+      b.addEventListener('click', () => { config.modo = modes[label]; renderMenu(); });
+      overlay.append(b);
+    }
+    if (config.modo === 'video') for (const label of ['Frames', 'Elementos']) {
+      const b = radio('submodo', label, 'crop_free');
+      b.setAttribute('aria-checked', String(config.submodo === label.toLowerCase()));
+      b.addEventListener('click', () => { config.submodo = label.toLowerCase(); renderMenu(); });
+      overlay.append(b);
+    }
+    for (const r of config.modo === 'video' ? ['16:9', '9:16'] : ['16:9', '4:3', '1:1', '3:4', '9:16']) overlay.append(radio('proporcao', r, 'crop'));
+    if (config.modo === 'video') {
+      const model = doc.createElement('button');
+      model.textContent = `${config.modelo} arrow_drop_down`;
+      model.addEventListener('click', () => {
+        for (const name of ['Omni 1.1 Flash', 'Veo 3.1 - Lite', 'Veo 3.1 - Fast']) {
+          const m = doc.createElement('button');
+          m.setAttribute('role', 'menuitem');
+          m.textContent = `volume_up ${name}`;
+          m.addEventListener('click', () => { config.modelo = name; log.push(`modelo:${name}`); renderMenu(); });
+          overlay.append(m);
+        }
+      });
+      overlay.append(model);
+      for (const r of ['360p', '720p']) overlay.append(radio('resolucao', r, 'hd'));
+      for (const r of ['4s', '6s', '8s', '10s']) overlay.append(radio('duracao', r, 'timer'));
+    }
+    const cost = doc.createElement('span');
+    cost.textContent = `A geração vai usar ${credits[config.modo] + (elements.some(e => e.video) ? 5 : 0)} créditos`;
+    overlay.append(cost);
+  }
+  box.querySelector('[aria-label="Gatilho de configurações"]').addEventListener('click', renderMenu);
+  doc.body.addEventListener('keydown', event => { if (event.key === 'Escape') overlay.replaceChildren(); });
+
+  let picker = function (onInclude) {
+    overlay.replaceChildren();
+    for (const label of ['image Imagens', 'drive_folder_upload Envios']) {
+      const t = doc.createElement('div');
+      t.setAttribute('role', 'tab');
+      t.textContent = label;
+      t.setAttribute('aria-selected', String(label.endsWith('Imagens')));
+      overlay.append(t);
+    }
+    const option = doc.createElement('button');
+    option.setAttribute('role', 'option');
+    option.textContent = 'Woman standing in studio';
+    option.addEventListener('click', () => log.push('option'));
+    const include = doc.createElement('button');
+    include.textContent = 'Incluir no comando';
+    include.addEventListener('click', () => { onInclude(); overlay.replaceChildren(); });
+    overlay.append(option, include);
+  };
+  const elements = [];
+  box.querySelector('[aria-label="Adicionar elementos à caixa de comando"]').addEventListener('click', () => plusPicker());
+  const slots = box.querySelector('.slots');
+  const renderSlots = () => {
+    slots.replaceChildren();
+    if (config.modo === 'video' && config.submodo === 'frames') {
+      const start = doc.createElement('button');
+      start.textContent = 'Início';
+      start.addEventListener('click', () => picker(() => log.push('frame-inicial')));
+      slots.append(start);
+    }
+  };
+  new window.MutationObserver(renderSlots).observe(overlay, {childList:true});
+  const grid = doc.querySelector('.grid');
+  const addTile = name => {
+    const tile = doc.createElement('button');
+    tile.textContent = `play_circle ${name}`;
+    tile.addEventListener('click', () => openEditor(name));
+    grid.prepend(tile);  // mais recente primeiro
+  };
+  for (let i = 1; i <= videos; i++) addTile(`Video ${i}`);
+  function openEditor(name) {
+    window.history.pushState({}, '', '/project/x/edit/v');
+    const ed = doc.querySelector('.editor');
+    ed.innerHTML = '<button aria-label="Botão &quot;Voltar&quot; para acessar a página anterior">arrow_back</button><canvas width="1080" height="1920"></canvas><span class="t">00:00:00 / 00:08:00</span><button aria-label="Pular para o próximo clipe">skip_next</button>';
+    ed.querySelector('canvas').toBlob = cb => { log.push(`frame:${ed.querySelector('.t').textContent}`); cb(new window.Blob(['jpg'], {type:'image/jpeg'})); };
+    ed.querySelector('[aria-label="Pular para o próximo clipe"]').addEventListener('click', () => { ed.querySelector('.t').textContent = '00:08:00 / 00:08:00'; });
+    ed.querySelector('button').addEventListener('click', () => { window.history.pushState({}, '', '/project/x'); ed.replaceChildren(); log.push('voltar'); });
+    log.push(`abriu:${name}`);
+  }
+  let armed = null;
+  window.addEventListener('message', event => { if (event.data?.type === 'arm-upload') armed = event.data.file; });
+  const origPicker = picker;
+  picker = onInclude => {
+    origPicker(onInclude);
+    const up = doc.createElement('button');
+    up.textContent = 'upload Enviar mídia';
+    up.addEventListener('click', () => setTimeout(() => {
+      if (!armed) return;
+      const file = armed; armed = null;
+      log.push(`upload:${file.name}`);
+      const showOption = () => {
+        const option = doc.createElement('button');
+        option.setAttribute('role', 'option');
+        option.textContent = file.name;
+        option.addEventListener('click', () => log.push(`selecionou:${file.name}`));
+        overlay.querySelector('[role="option"]').before(option);
+      };
+      if (!rights) return showOption();
+      const dialog = doc.createElement('div');
+      dialog.setAttribute('role', 'dialog');
+      dialog.innerHTML = 'Direitos de uso desta imagem <button>Cancelar</button><button>Concordo</button>';
+      dialog.lastChild.addEventListener('click', () => { dialog.remove(); showOption(); log.push('concordo(usuario)'); });
+      overlay.append(dialog);
+    }, 5));
+    overlay.prepend(up);
+  };
+  // Seletor do "+" como no Flow real: abas Imagens/Vídeos, clicar no item já inclui e fecha; envio mostra
+  // "Enviando x" e o vídeo aparece sem extensão.
+  const library = {Imagens: [...images], 'Vídeos': ['Woman walking toward camera']};
+  function plusPicker(tab = 'Imagens') {
+    overlay.replaceChildren();
+    for (const label of ['image Imagens', 'videocam Vídeos']) {
+      const t = doc.createElement('div');
+      t.setAttribute('role', 'tab');
+      t.textContent = label;
+      t.setAttribute('aria-selected', String(label.endsWith(tab)));
+      t.addEventListener('click', () => plusPicker(label.split(' ')[1]));
+      overlay.append(t);
+    }
+    const up = doc.createElement('button');
+    up.textContent = 'upload Enviar mídia';
+    up.addEventListener('click', () => setTimeout(() => {
+      if (!armed) return;
+      const file = armed; armed = null;
+      const video = file.type.startsWith('video/');
+      log.push(`upload:${file.name}`);
+      const pending = doc.createElement('button');
+      pending.setAttribute('role', 'option');
+      pending.textContent = `Enviando ${file.name.replace(/\.[^.]+$/, '')}`;
+      overlay.querySelector('[role="option"]').before(pending);
+      const finish = () => setTimeout(() => {
+        pending.textContent = video ? file.name.replace(/\.[^.]+$/, '') : file.name;
+        library[video ? 'Vídeos' : 'Imagens'].unshift(pending.textContent);
+        pending.addEventListener('click', () => { elements.push({name:pending.textContent, video}); log.push(`elemento:${pending.textContent}`); overlay.replaceChildren(); });
+      }, 20);
+      if (!rights) return finish();
+      const dialog = doc.createElement('div');
+      dialog.setAttribute('role', 'dialog');
+      dialog.innerHTML = 'Direitos de uso deste vídeo <button>Cancelar</button><button>Concordo</button>';
+      dialog.lastChild.addEventListener('click', () => { dialog.remove(); log.push('concordo(usuario)'); finish(); });
+      overlay.append(dialog);
+    }, 5));
+    overlay.append(up);
+    for (const name of library[tab]) {
+      const option = doc.createElement('button');
+      option.setAttribute('role', 'option');
+      option.textContent = tab === 'Vídeos' ? `videocam ${name}` : name;
+      option.addEventListener('click', () => { elements.push({name, video: tab === 'Vídeos'}); log.push(`elemento:${name}`); overlay.replaceChildren(); });
+      overlay.append(option);
+    }
+  }
+
+  generate.addEventListener('click', () => {
+    log.push('gerar');
+    const progress = doc.createElement('span');
+    progress.textContent = '42%';
+    grid.prepend(progress);
+    setTimeout(() => { progress.remove(); if (config.modo === 'video' && !failSilently) addTile('Novo video'); }, 30);
+  });
+  for (const s of scripts) window.eval(s);
+  window.FlowActions.setDelay(1);
+  store.veoFlowState = {version:1, itens:[{id:'a', status:'pendente'}]};
+  return {window, doc, config, log, store, editor, elements};
+}
+
+const imagem = {id:'a', tipo:'imagem', flow:{modo:'imagem', proporcao:'9:16', submodo:null}, frame_inicial:''};
+const video = {id:'a', tipo:'veo', duracao_s:10, flow:{modo:'video', proporcao:'9:16', submodo:'frames', modelo:'Omni 1.1 Flash', resolucao:'720p'}, frame_inicial:'item:img'};
+const status = f => f.store.veoFlowState.itens[0].status;
+
+test('imagem: configura Imagem 9:16, preenche e gera sozinha com 0 créditos', async () => {
+  const f = flow();
+  const r = await f.window.FlowContent.runStep(imagem, 'Retrato da Luna', f.doc, f.window);
+  assert.equal(r.ok, true);
+  assert.equal(r.status, 'gerado');
+  assert.deepEqual({modo:f.config.modo, proporcao:f.config.proporcao}, {modo:'imagem', proporcao:'9:16'});
+  assert.equal(f.editor.textContent, 'Retrato da Luna');
+  assert.ok(f.log.includes('gerar'));
+  assert.equal(f.doc.querySelector('.cdk-overlay-container').children.length, 0);
+  assert.equal(status(f), 'gerado');
+});
+
+test('imagem com referência anexa a imagem anterior antes de gerar', async () => {
+  const f = flow();
+  await f.window.FlowContent.runStep({...imagem, frame_inicial:'item:ref'}, '1º frame', f.doc, f.window);
+  assert.ok(f.log.indexOf('elemento:Woman standing in studio') < f.log.indexOf('gerar'));
+});
+
+test('imagem NÃO é gerada se o Flow cobrar créditos', async () => {
+  const f = flow({credits:{imagem:5, video:10}});
+  const r = await f.window.FlowContent.runStep(imagem, 'Retrato', f.doc, f.window);
+  assert.equal(r.status, 'preenchido');
+  assert.equal(r.credits, 5);
+  assert.ok(!f.log.includes('gerar'));
+  assert.equal(status(f), 'preenchido');
+});
+
+test('vídeo: Vídeo → Frames 9:16, frame inicial da imagem mais recente, preenche e NÃO gera', async () => {
+  const f = flow();
+  const r = await f.window.FlowContent.runStep(video, 'Luna abre a porta', f.doc, f.window);
+  assert.equal(r.status, 'preenchido');
+  assert.equal(r.credits, 15);
+  assert.deepEqual({...f.config}, {modo:'video', submodo:'frames', proporcao:'9:16', modelo:'Omni 1.1 Flash', resolucao:'720p', duracao:'10s'});
+  assert.ok(f.log.includes('frame-inicial'));
+  assert.ok(!f.log.includes('gerar'));
+  assert.equal(f.editor.textContent, 'Luna abre a porta');
+});
+
+test('vídeo seguinte: captura o último frame do vídeo anterior, volta, sobe no Início e espera o Concordo do usuário', async () => {
+  const f = flow({videos: 2});
+  const notices = [];
+  f.window.chrome.runtime = {sendMessage: async m => { notices.push(m.text); f.doc.querySelector('[role="dialog"] button:last-child').click(); }};
+  const r = await f.window.FlowContent.runStep({...video, frame_inicial:'ultimo_frame:v1'}, 'Ela diz Siga-nos', f.doc, f.window);
+  assert.equal(r.status, 'preenchido');
+  const order = ['abriu:Video 2', 'frame:00:08:00 / 00:08:00', 'voltar', 'radio:9:16', 'upload:ultimo_frame_v1.jpg', 'concordo(usuario)', 'selecionou:ultimo_frame_v1.jpg'];
+  assert.deepEqual(f.log.filter(l => order.includes(l)), order);
+  assert.ok(f.log.indexOf('modelo:Omni 1.1 Flash') < f.log.indexOf('upload:ultimo_frame_v1.jpg'));
+  assert.match(notices[0], /Concordo/);
+  assert.ok(!f.log.includes('gerar'));
+  assert.equal(f.editor.textContent, 'Ela diz Siga-nos');
+  assert.equal(f.window.location.pathname, '/project/x');
+});
+
+test('gerar vídeo só marca gerado quando o vídeo novo aparece; falha silenciosa do Flow vira erro', async () => {
+  const ok = flow({videos: 1});
+  await ok.window.FlowContent.runStep(video, 'p', ok.doc, ok.window);
+  assert.equal((await ok.window.FlowContent.generateVideo(video, ok.doc)).status, 'gerado');
+  assert.equal(status(ok), 'gerado');
+  const falha = flow({videos: 1, failSilently: true});
+  await falha.window.FlowContent.runStep(video, 'p', falha.doc, falha.window);
+  await assert.rejects(falha.window.FlowContent.generateVideo(video, falha.doc, {timeout: 300}), /falhado sem aviso/);
+  assert.equal(status(falha), 'preenchido');
+});
+
+const genjutsu = {id:'a', tipo:'genjutsu', modo:'motion', duracao_s:10, anexos:{imagem_ancora:'', video_fonte:'trend_mudo.mp4'},
+  flow:{modo:'video', proporcao:'9:16', submodo:'elementos', modelo:'Omni 1.1 Flash', resolucao:'720p'}, frame_inicial:''};
+
+test('genjutsu: Elementos + Omni, sobe o vídeo fonte (espera Enviando e o Concordo), anexa a personagem e lê o custo real', async () => {
+  const f = flow();
+  const notices = [];
+  f.window.chrome.runtime = {sendMessage: async m => { notices.push(m.text); f.doc.querySelector('[role="dialog"] button:last-child').click(); }};
+  await assert.rejects(f.window.FlowContent.runStep(genjutsu, 'p', f.doc, f.window), /vídeo fonte/);
+  const video = new f.window.File(['mp4'], 'trend_mudo.mp4', {type:'video/mp4'});
+  const r = await f.window.FlowContent.runStep(genjutsu, 'Recrie com a Luna. Sem fala', f.doc, f.window, {video});
+  assert.equal(r.status, 'preenchido');
+  assert.equal(r.credits, 20);  // 15 + vídeo de referência, como no Flow real
+  assert.deepEqual({modo:f.config.modo, submodo:f.config.submodo, modelo:f.config.modelo, resolucao:f.config.resolucao}, {modo:'video', submodo:'elementos', modelo:'Omni 1.1 Flash', resolucao:'720p'});
+  assert.deepEqual(f.elements, [{name:'trend_mudo', video:true}, {name:'Woman standing in studio', video:false}]);
+  assert.match(notices[0], /Concordo/);
+  assert.ok(!f.log.includes('gerar'));
+  assert.equal(f.editor.textContent, 'Recrie com a Luna. Sem fala');
+  assert.equal(status(f), 'preenchido');
+});
+
+test('genjutsu usa a imagem âncora pelo nome quando ela existe; senão, a mais recente', async () => {
+  const comAncora = flow({rights:false, images:['Imagem recente', 'luna_ref.png']});
+  const video = new comAncora.window.File(['mp4'], 'trend_mudo.mp4', {type:'video/mp4'});
+  const item = {...genjutsu, anexos:{...genjutsu.anexos, imagem_ancora:String.raw`C:\fotos\luna_ref.png`}};
+  await comAncora.window.FlowContent.runStep(item, 'p', comAncora.doc, comAncora.window, {video});
+  assert.equal(comAncora.elements[1].name, 'luna_ref.png');
+  const semAncora = flow({rights:false, images:['Imagem recente', 'outra.png']});
+  await semAncora.window.FlowContent.runStep(item, 'p', semAncora.doc, semAncora.window, {video: new semAncora.window.File(['mp4'], 'trend_mudo.mp4', {type:'video/mp4'})});
+  assert.equal(semAncora.elements[1].name, 'Imagem recente');
+});

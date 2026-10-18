@@ -11,8 +11,14 @@
   "content_scripts": [
     {
       "matches": ["https://labs.google/fx/tools/flow*", "https://flow.google.com/*", "https://gemini.google.com/*"],
-      "js": ["src/field-selection.js", "src/content.js"],
+      "js": ["src/field-selection.js", "src/flow-actions.js", "src/content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://flow.google.com/*"],
+      "js": ["src/page-upload.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
     }
   ]
 }

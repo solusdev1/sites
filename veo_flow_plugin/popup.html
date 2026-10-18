@@ -11,7 +11,7 @@
     <header class="header">
       <div class="eyebrow">Luna / sala de criação</div>
       <h1>Fila de takes</h1>
-      <p>Escolha o próximo prompt. A geração continua sob seu controle.</p>
+      <p>Siga a sequência: imagem da personagem, vídeo e extensões.</p>
     </header>
 
     <section class="control-panel" aria-label="Controles da fila">
@@ -20,13 +20,14 @@
         <span id="queue-count" class="count">0 itens</span>
       </div>
       <button id="fill-next" class="primary-button" type="button">Preencher próximo</button>
-      <p class="control-hint">Depois, anexe os arquivos indicados e clique em Generate na página.</p>
+      <p class="control-hint">Imagens de 0 créditos são geradas sozinhas; vídeos sempre pedem sua confirmação.</p>
       <div class="import-row">
         <button id="import-queue-button" class="secondary-button" type="button">Importar fila</button>
         <button id="import-persona-button" class="secondary-button" type="button">Importar persona</button>
       </div>
       <input id="queue-file" class="visually-hidden" type="file" accept="application/json,.json" aria-label="Selecione fila.json ou fila_genjutsu.json">
       <input id="persona-file" class="visually-hidden" type="file" accept="application/json,.json" aria-label="Selecione persona.json">
+      <input id="video-file" class="visually-hidden" type="file" accept="video/mp4,.mp4,.mov,.m4v" aria-label="Selecione o vídeo fonte do genjutsu">
       <p id="feedback" class="feedback" role="status" aria-live="polite"></p>
     </section>
 

@@ -10,6 +10,13 @@ export function buildPrompt(item, persona) {
 }
 
 export function requiredAttachments(item) {
+  if (item.flow) {
+    if (item.tipo === 'genjutsu') return ['Vídeo fonte: escolha no popup (sem áudio, até 10s)', 'Personagem: imagem âncora ou a mais recente do projeto (automático)'];
+    const frame = item.frame_inicial || '';
+    if (frame.startsWith('ultimo_frame:')) return ['Frame inicial: último frame do vídeo anterior (capturado e enviado automaticamente)'];
+    if (frame.startsWith('item:')) return [item.tipo === 'imagem' ? 'Referência: imagem anterior da sequência (automático)' : 'Frame inicial: imagem anterior da sequência (automático)'];
+    return [];
+  }
   const attachments = [];
   const anchor = item.anexos?.imagem_ancora?.trim();
   const source = item.anexos?.video_fonte?.trim();
