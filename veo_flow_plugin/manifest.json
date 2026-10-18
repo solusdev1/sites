@@ -10,7 +10,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://labs.google/fx/tools/flow*", "https://gemini.google.com/*"],
+      "matches": ["https://labs.google/fx/tools/flow*", "https://flow.google.com/*", "https://gemini.google.com/*"],
       "js": ["src/field-selection.js", "src/content.js"],
       "run_at": "document_idle"
     }

@@ -109,7 +109,7 @@ async function importPersona(file) {
 function supportedTab(url) {
   try {
     const parsed = new URL(url);
-    return (parsed.origin === 'https://labs.google' && parsed.pathname.startsWith('/fx/tools/flow')) || parsed.origin === 'https://gemini.google.com';
+    return (parsed.origin === 'https://labs.google' && parsed.pathname.startsWith('/fx/tools/flow')) || parsed.origin === 'https://flow.google.com' || parsed.origin === 'https://gemini.google.com';
   } catch { return false; }
 }
 

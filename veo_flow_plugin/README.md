@@ -6,7 +6,7 @@ Extensão Chrome Manifest V3 para acompanhar uma fila de vídeos da persona Luna
 
 1. Abra `chrome://extensions` no Chrome e ative **Modo do desenvolvedor**.
 2. Clique em **Carregar sem compactação** e selecione a pasta `veo_flow_plugin`.
-3. Abra `https://labs.google/fx/tools/flow` ou `https://gemini.google.com` e recarregue a aba se ela já estava aberta antes de instalar a extensão.
+3. Abra `https://flow.google.com` (o antigo `https://labs.google/fx/tools/flow` redireciona para lá) ou `https://gemini.google.com` e recarregue a aba se ela já estava aberta antes de instalar a extensão.
 
 Não é necessário instalar dependências para usar a extensão. `npm.cmd install` é necessário apenas para rodar os testes.
 
