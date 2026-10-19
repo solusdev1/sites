@@ -159,7 +159,7 @@ export function nextStep(state) {
     case 'preenchido': return {item, blockedBy:null, action:'aguardar', reason:`${label(item)} está preenchido: clique em gerar no Flow; a extensão marca "gerado", baixa o vídeo e salva o último frame.`};
     case 'gerado': return {item, blockedBy:null, action:'revisar', reason:`${label(item)} foi gerado: aprove ou rejeite (ou importe o veredito da QA) para avançar.`};
     default: {
-      const motivos = item.qa?.motivos?.length ? ` Motivos: ${item.qa.motivos.join('; ')}.` : '';
+      const motivos = item.qa?.motivos?.length ? ` Motivos: ${item.qa.motivos.map(formatMotivo).join('; ')}.` : '';
       return {item, blockedBy:null, action:'regenerar', reason:`${label(item)} foi rejeitado.${motivos} Use "Regenerar este" (mesmo prompt${item.prompt_correcao ? ' corrigido pela QA' : ''} e mesmo frame inicial).`};
     }
   }
@@ -178,14 +178,31 @@ export function updateItem(state, id, fields) {
   return {...state, itens:state.itens.map(item => item.id === id ? {...item, ...fields} : item)};
 }
 
-// Veredito do analisador de QA (<item_id>.verdict.json).
+// Veredito do analisador de QA (<item_id>.verdict.json), formato de schemas/verdict.schema.json.
+const MOTIVO_TIPOS = ['objeto_duplicado', 'rosto', 'maos', 'cenario', 'continuidade', 'fisica', 'outro'];
+// Motivo da QA para exibir: {t, tipo, descricao} → "t s · tipo · descricao"; texto (formato antigo) fica como está.
+export const formatMotivo = motivo => typeof motivo === 'string' ? motivo : `${motivo.t} s · ${motivo.tipo} · ${motivo.descricao}`;
 export function validateVerdict(verdict) {
   object(verdict, 'veredito');
   string(verdict.item_id, 'veredito.item_id', false);
   if (!['aprovado', 'rejeitado'].includes(verdict.verdict)) fail('veredito.verdict', 'deve ser aprovado ou rejeitado');
-  if (!Array.isArray(verdict.motivos) || verdict.motivos.some(m => typeof m !== 'string')) fail('veredito.motivos', 'deve ser lista de textos');
+  if (!Array.isArray(verdict.motivos)) fail('veredito.motivos', 'deve ser uma lista');
+  verdict.motivos.forEach((motivo, index) => {
+    if (typeof motivo === 'string') return;  // formato antigo (só texto), aceito por compatibilidade
+    const path = `veredito.motivos[${index}]`;
+    object(motivo, path);
+    if (!Number.isFinite(motivo.t) || motivo.t < 0) fail(`${path}.t`, 'deve ser número ≥ 0');
+    if (!MOTIVO_TIPOS.includes(motivo.tipo)) fail(`${path}.tipo`, `deve ser ${MOTIVO_TIPOS.join(', ')}`);
+    string(motivo.descricao, `${path}.descricao`, false);
+  });
   for (const field of ['frame_continuacao', 'prompt_correcao'])
     if (verdict[field] !== undefined && verdict[field] !== null) string(verdict[field], `veredito.${field}`, false);
+  const corte = verdict.corte_sugerido;
+  if (corte !== undefined && corte !== null) {
+    object(corte, 'veredito.corte_sugerido');
+    if (!Number.isFinite(corte.inicio) || corte.inicio < 0) fail('veredito.corte_sugerido.inicio', 'deve ser número ≥ 0');
+    if (!Number.isFinite(corte.fim) || corte.fim <= 0) fail('veredito.corte_sugerido.fim', 'deve ser número > 0');
+  }
   return verdict;
 }
 
@@ -201,7 +218,7 @@ export function applyVerdict(state, verdict) {
   if (!item) throw new Error(`Item ${verdict.item_id} não encontrado.`);
   if (!['gerado', 'aprovado', 'rejeitado'].includes(item.status)) throw new Error(`O item ${verdict.item_id} ainda não foi gerado (status: ${item.status}).`);
   const next = item.status === verdict.verdict ? state : markStatus(state, item.id, verdict.verdict);
-  const fields = {qa:{verdict:verdict.verdict, motivos:verdict.motivos}, prompt_correcao:verdict.prompt_correcao ?? null, frame_continuacao:verdict.frame_continuacao ?? null};
+  const fields = {qa:{verdict:verdict.verdict, motivos:verdict.motivos}, prompt_correcao:verdict.prompt_correcao ?? null, corte_sugerido:verdict.corte_sugerido ?? null, frame_continuacao:verdict.frame_continuacao ?? null};
   if (fields.frame_continuacao !== (item.frame_continuacao ?? null)) fields.frame_indicado = null;  // frame novo: o usuário escolhe o arquivo de novo
   return updateItem(next, item.id, fields);
 }

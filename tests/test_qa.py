@@ -31,6 +31,17 @@ def test_verdict_schema_rejeita_campos_extras():
         validate("verdict", dict(v, intruso=True))
 
 
+def test_fixture_de_veredito_compartilhada_com_o_plugin():
+    # A mesma fixture roda no npm test do veo_flow_plugin (parseVerdict/applyVerdict): o contrato não diverge.
+    root = Path(__file__).resolve().parent
+    v = json.loads((root / "fixtures" / "verdict.exemplo.json").read_text(encoding="utf-8"))
+    validate("verdict", v)
+    fila = json.loads((root.parent / "data" / "exemplos" / "fila.maya.json").read_text(encoding="utf-8"))
+    assert v["item_id"] == fila["itens"][0]["id"]
+    assert v["motivos"] and all(isinstance(m, dict) for m in v["motivos"])
+    assert v["corte_sugerido"] is not None and v["prompt_correcao"]
+
+
 def test_api_mock_sem_rede_e_sem_vazar_chave(tmp_path, monkeypatch):
     frame = tmp_path / "frame.png"
     frame.write_bytes(b"png")

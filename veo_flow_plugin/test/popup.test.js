@@ -72,6 +72,19 @@ test('rejeitado: "Regenerar este" reusa o mesmo item com o prompt corrigido e o 
   assert.deepEqual([p.sent[0].item.id, p.sent[0].prompt, p.sent[0].startFrameKey], [ids[1], 'Prompt corrigido', ids[0]]);
 });
 
+test('motivos da QA no formato do schema aparecem como "t s · tipo · descricao", com o corte sugerido', async () => {
+  const state = fresh();
+  state.itens[0] = {...state.itens[0], status:'rejeitado', corte_sugerido:{inicio:0, fim:2.4},
+    qa:{verdict:'rejeitado', motivos:[{t:2.5, tipo:'objeto_duplicado', descricao:'duas canecas'}, 'mão deformada']}};
+  const p = await popup(state);
+  const lines = [...p.window.document.querySelectorAll('.queue-item')][0].querySelectorAll('.attachments li');
+  const texts = [...lines].map(li => li.textContent);
+  assert.ok(texts.includes('2.5 s · objeto_duplicado · duas canecas'), texts.join(' | '));
+  assert.ok(texts.includes('mão deformada'));
+  assert.ok(texts.includes('Corte sugerido pela QA: 0 s–2.4 s'));
+  assert.match(p.$('#current-reason').textContent, /2\.5 s · objeto_duplicado · duas canecas; mão deformada/);
+});
+
 test('importar veredito aplica ao item e "Baixar vídeo atual" pede o COLLECT ao Flow', async () => {
   const state = fresh();
   state.itens[0] = {...state.itens[0], status:'gerado', flow_midia:'Novo video'};

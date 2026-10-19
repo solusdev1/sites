@@ -1,4 +1,4 @@
-import { emptyState, mergeQueue, parseQueue, parsePersona, setPersona, nextStep, markStatus, updateItem, startFrameSource, needsChosenFrame, parseVerdict, applyVerdict } from './queue.js';
+import { emptyState, mergeQueue, parseQueue, parsePersona, setPersona, nextStep, markStatus, updateItem, startFrameSource, needsChosenFrame, parseVerdict, applyVerdict, formatMotivo } from './queue.js';
 import { promptFor, requiredAttachments } from './prompt.js';
 
 const STORAGE_KEY = 'veoFlowState';
@@ -83,7 +83,8 @@ function files(item) {
   if (item.frame_indicado) lines.push(`Frame de continuação (indicado): ${item.frame_indicado}`);
   else if (item.ultimo_frame) lines.push(`Último frame: ${item.ultimo_frame}`);
   else if (item.frame_erro) lines.push(`Último frame não salvo: ${item.frame_erro}`);
-  if (item.qa?.motivos?.length) lines.push(`QA (${item.qa.verdict}): ${item.qa.motivos.join('; ')}`);
+  if (item.qa?.motivos?.length) lines.push(`QA (${item.qa.verdict}):`, ...item.qa.motivos.map(formatMotivo));
+  if (item.corte_sugerido) lines.push(`Corte sugerido pela QA: ${item.corte_sugerido.inicio} s–${item.corte_sugerido.fim} s`);
   return lines;
 }
 
