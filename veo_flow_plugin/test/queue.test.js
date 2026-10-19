@@ -52,12 +52,16 @@ test('sequência: aceita imagem e nextStep só libera um item depois que a orige
   let state = mergeQueue(emptyState(), validateQueue(queue)).state;
   assert.equal(nextStep(state).item.id, 'ref');
   state = markStatus(state, 'ref', 'preenchido');
-  assert.deepEqual([nextStep(state).item.id, nextStep(state).blockedBy.id], ['v1', 'ref']);
+  assert.deepEqual([nextStep(state).item.id, nextStep(state).action], ['ref', 'aguardar']);
   state = markStatus(state, 'ref', 'gerado');
-  assert.equal(nextStep(state).blockedBy, null);
+  assert.deepEqual([nextStep(state).item.id, nextStep(state).action], ['ref', 'revisar']);
+  state = markStatus(state, 'ref', 'aprovado');
+  assert.deepEqual([nextStep(state).item.id, nextStep(state).blockedBy], ['v1', null]);
   state = markStatus(state, 'v1', 'preenchido');
-  assert.equal(nextStep(state).item.id, 'v2');
-  assert.equal(nextStep(state).blockedBy.id, 'v1');
+  assert.equal(nextStep(state).item.id, 'v1');
+  // Item fora de ordem: a origem ainda não aprovada bloqueia.
+  const out = {...state, itens:[state.itens[0], state.itens[2], state.itens[1]]};
+  assert.deepEqual([nextStep(out).item.id, nextStep(out).blockedBy.id, nextStep(out).action], ['v2', 'v1', 'bloqueado']);
   assert.throws(() => validateQueue({...queue, itens:[{...queue.itens[1], frame_inicial:'qualquer'}]}), /frame_inicial/);
   assert.throws(() => validateQueue({...queue, itens:[{...queue.itens[1], duracao_s:0}]}), /duracao_s/);
 });

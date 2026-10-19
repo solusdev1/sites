@@ -1,4 +1,15 @@
-export const STATUSES = Object.freeze(['pendente', 'preenchido', 'gerado', 'descartado']);
+// Máquina de estados por item: pendente → preenchido → gerado → (aprovado | rejeitado). Rejeitado volta a
+// preenchido ("Regenerar este"). Descartado tira o item da sequência. Voltar a pendente é sempre permitido.
+export const STATUSES = Object.freeze(['pendente', 'preenchido', 'gerado', 'aprovado', 'rejeitado', 'descartado']);
+const TRANSITIONS = {
+  pendente: ['preenchido', 'gerado', 'descartado'],
+  preenchido: ['preenchido', 'gerado', 'descartado'],
+  gerado: ['preenchido', 'aprovado', 'rejeitado', 'descartado'],
+  aprovado: ['rejeitado', 'descartado'],
+  rejeitado: ['preenchido', 'aprovado', 'descartado'],
+  descartado: []
+};
+const DONE = ['aprovado', 'descartado'];
 const MODES = [null, 'motion', 'swap_produto', 'restyle'];
 const RATIOS = ['16:9', '4:3', '1:1', '3:4', '9:16'];
 const FRAME = /^(|item:\S+|ultimo_frame:\S+)$/;
@@ -106,17 +117,91 @@ export function setPersona(state, persona) {
 
 export function nextPending(state) { return state.itens.find(item => item.status === 'pendente') || null; }
 
-// Próximo passo respeitando a sequência: um item com frame_inicial só roda depois que o item de origem foi gerado.
+const origin = (state, item) => {
+  const id = item.frame_inicial?.split(':')[1];
+  return id ? state.itens.find(other => other.id === id) || null : null;
+};
+const basename = path => String(path || '').split(/[\\/]/).pop();
+// A QA pode indicar um frame de continuação diferente do último frame que a extensão salvou.
+export const needsChosenFrame = source => !!source?.frame_continuacao && basename(source.frame_continuacao) !== `${source.id}_last.png` && !source.frame_indicado;
+
+// De qual item vem o frame inicial deste: ultimo_frame:X → X; sem frame_inicial, um vídeo continua o anterior
+// aprovado da fila. item:X (imagem de referência) é tratado no Flow, não aqui. Genjutsu e imagem não encadeiam.
+function frameOrigin(state, item) {
+  const frame = item.frame_inicial || '';
+  if (frame.startsWith('ultimo_frame:')) return origin(state, item);
+  if (frame || item.tipo !== 'veo') return null;
+  const index = state.itens.findIndex(other => other.id === item.id);  // o popup passa cópias do item
+  const previous = state.itens.slice(0, Math.max(index, 0)).filter(other => other.status !== 'descartado').at(-1);
+  return previous && previous.tipo !== 'imagem' && previous.status === 'aprovado' && (previous.ultimo_frame || previous.frame_indicado) ? previous : null;
+}
+
+// Chave do frame salvo em chrome.storage (veoFlowFrames): o último frame capturado ou o indicado.
+export function startFrameSource(state, item) {
+  const source = frameOrigin(state, item);
+  if (!source) return null;
+  return source.frame_indicado ? {item_id:source.id, key:`${source.id}:indicado`, indicado:true} : {item_id:source.id, key:source.id, indicado:false};
+}
+
+const label = item => `"${item.hook || item.id}"`;
+
+// Item atual = o primeiro que ainda não foi aprovado nem descartado. "Próximo" só avança quando ele é aprovado.
 export function nextStep(state) {
-  const item = nextPending(state);
-  if (!item) return {item:null, blockedBy:null};
-  const source = item.frame_inicial?.split(':')[1];
-  const origin = source && state.itens.find(other => other.id === source);
-  return {item, blockedBy: origin && origin.status !== 'gerado' ? origin : null};
+  const item = state.itens.find(other => !DONE.includes(other.status));
+  if (!item) return {item:null, blockedBy:null, action:'fim', reason:'Fila concluída: todos os itens foram aprovados ou descartados.'};
+  const source = origin(state, item) || frameOrigin(state, item);
+  if (source && source !== item && !DONE.includes(source.status))
+    return {item, blockedBy:source, action:'bloqueado', reason:`Antes, gere e aprove ${label(source)} (status: ${source.status}).`};
+  if (['pendente', 'rejeitado'].includes(item.status) && needsChosenFrame(source))
+    return {item, blockedBy:null, action:'escolher_frame', reason:`A QA indicou outro frame para continuar ${label(source)} (${basename(source.frame_continuacao)}). Escolha esse arquivo em "Usar outro frame" desse item.`};
+  switch (item.status) {
+    case 'pendente': return {item, blockedBy:null, action:'preencher', reason:''};
+    case 'preenchido': return {item, blockedBy:null, action:'aguardar', reason:`${label(item)} está preenchido: clique em gerar no Flow; a extensão marca "gerado", baixa o vídeo e salva o último frame.`};
+    case 'gerado': return {item, blockedBy:null, action:'revisar', reason:`${label(item)} foi gerado: aprove ou rejeite (ou importe o veredito da QA) para avançar.`};
+    default: {
+      const motivos = item.qa?.motivos?.length ? ` Motivos: ${item.qa.motivos.join('; ')}.` : '';
+      return {item, blockedBy:null, action:'regenerar', reason:`${label(item)} foi rejeitado.${motivos} Use "Regenerar este" (mesmo prompt${item.prompt_correcao ? ' corrigido pela QA' : ''} e mesmo frame inicial).`};
+    }
+  }
 }
 
 export function markStatus(state, id, status) {
   if (!STATUSES.includes(status)) throw new Error('Status inválido.');
-  if (!state.itens.some(item => item.id === id)) throw new Error(`Item ${id} não encontrado.`);
+  const current = state.itens.find(item => item.id === id);
+  if (!current) throw new Error(`Item ${id} não encontrado.`);
+  if (status !== 'pendente' && !TRANSITIONS[current.status]?.includes(status)) throw new Error(`Transição inválida: ${current.status} → ${status}.`);
   return {...state, itens:state.itens.map(item => item.id === id ? {...item, status} : item)};
+}
+
+export function updateItem(state, id, fields) {
+  if (!state.itens.some(item => item.id === id)) throw new Error(`Item ${id} não encontrado.`);
+  return {...state, itens:state.itens.map(item => item.id === id ? {...item, ...fields} : item)};
+}
+
+// Veredito do analisador de QA (<item_id>.verdict.json).
+export function validateVerdict(verdict) {
+  object(verdict, 'veredito');
+  string(verdict.item_id, 'veredito.item_id', false);
+  if (!['aprovado', 'rejeitado'].includes(verdict.verdict)) fail('veredito.verdict', 'deve ser aprovado ou rejeitado');
+  if (!Array.isArray(verdict.motivos) || verdict.motivos.some(m => typeof m !== 'string')) fail('veredito.motivos', 'deve ser lista de textos');
+  for (const field of ['frame_continuacao', 'prompt_correcao'])
+    if (verdict[field] !== undefined && verdict[field] !== null) string(verdict[field], `veredito.${field}`, false);
+  return verdict;
+}
+
+export function parseVerdict(text) {
+  let data;
+  try { data = JSON.parse(text); } catch { throw new Error('JSON inválido. Escolha um arquivo <item_id>.verdict.json válido.'); }
+  return validateVerdict(data);
+}
+
+export function applyVerdict(state, verdict) {
+  validateVerdict(verdict);
+  const item = state.itens.find(other => other.id === verdict.item_id);
+  if (!item) throw new Error(`Item ${verdict.item_id} não encontrado.`);
+  if (!['gerado', 'aprovado', 'rejeitado'].includes(item.status)) throw new Error(`O item ${verdict.item_id} ainda não foi gerado (status: ${item.status}).`);
+  const next = item.status === verdict.verdict ? state : markStatus(state, item.id, verdict.verdict);
+  const fields = {qa:{verdict:verdict.verdict, motivos:verdict.motivos}, prompt_correcao:verdict.prompt_correcao ?? null, frame_continuacao:verdict.frame_continuacao ?? null};
+  if (fields.frame_continuacao !== (item.frame_continuacao ?? null)) fields.frame_indicado = null;  // frame novo: o usuário escolhe o arquivo de novo
+  return updateItem(next, item.id, fields);
 }

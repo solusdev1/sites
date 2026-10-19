@@ -117,8 +117,13 @@ function flow({credits = {imagem: 0, video: 15}, videos = 0, failSilently = fals
     tile.setAttribute('role', 'group');
     tile.setAttribute('aria-label', name);
     const kind = doc.createElement(icon === 'play_circle' ? 'flow-video-tile' : 'flow-image-tile');
-    kind.innerHTML = `<div class="container"></div><div role="button" aria-label="${name}">${icon} ${name}</div>`;
-    if (icon === 'play_circle') kind.querySelector('.container').addEventListener('click', () => openEditor(name));
+    kind.innerHTML = `<div class="container"><img src="https://flow.google.com/asb/thumb"></div><div role="button" aria-label="${name}">${icon} ${name}</div>`;
+    if (icon === 'play_circle') {
+      const container = kind.querySelector('.container');
+      container.addEventListener('click', () => openEditor(name));
+      // Como no Flow real: o <video> só existe enquanto o mouse está sobre o tile.
+      container.addEventListener('mouseenter', () => { container.innerHTML = `<video src="https://flow.google.com/asb/video-${encodeURIComponent(name)}"></video>`; });
+    }
     tile.append(kind);
     grid.prepend(tile);
   };
@@ -283,9 +288,9 @@ test('vídeo seguinte: abre o vídeo anterior PELO NOME gravado, captura o últi
   f.window.chrome.runtime = {sendMessage: async m => { notices.push(m.text); f.doc.querySelector('[role="dialog"] button:last-child')?.click(); }};
   const r = await f.window.FlowContent.runStep({...video, frame_inicial:'ultimo_frame:v1'}, 'Ela diz Siga-nos', f.doc, f.window);
   assert.equal(r.status, 'preenchido');
-  const order = ['abriu:Video 1', 'frame:00:08:00 / 00:08:00', 'voltar', 'radio:9:16', 'upload:ultimo_frame_v1.jpg', 'concordo(usuario)', 'selecionou:ultimo_frame_v1.jpg'];
+  const order = ['abriu:Video 1', 'frame:00:08:00 / 00:08:00', 'voltar', 'radio:9:16', 'upload:v1_last.png', 'concordo(usuario)', 'selecionou:v1_last.png'];
   assert.deepEqual(f.log.filter(l => order.includes(l)), order);
-  assert.ok(f.log.indexOf('modelo:Omni 1.1 Flash') < f.log.indexOf('upload:ultimo_frame_v1.jpg'));
+  assert.ok(f.log.indexOf('modelo:Omni 1.1 Flash') < f.log.indexOf('upload:v1_last.png'));
   assert.match(notices[0], /Concordo/);
   assert.ok(!f.log.includes('gerar'));
   assert.equal(f.editor.textContent, 'Ela diz Siga-nos');
@@ -351,4 +356,83 @@ test('arquivo que já está no projeto com o mesmo nome é reaproveitado, sem re
   await f.window.FlowContent.runStep(genjutsu, 'p', f.doc, f.window, {video});
   assert.ok(!f.log.some(l => l.startsWith('upload:')));
   assert.deepEqual(f.elements[0], {name:'Woman walking toward camera', video:true});
+});
+
+// Download pedido ao service worker: o teste faz o papel dele e devolve o caminho final no disco.
+function fakeBackground(f) {
+  const downloads = [];
+  f.window.chrome.runtime = {sendMessage: async m => {
+    if (m.type !== 'DOWNLOAD') return undefined;
+    downloads.push(m);
+    return {ok:true, path:`Downloads/${m.filename}`};
+  }};
+  return downloads;
+}
+
+test('bug 1: ao detectar o vídeo gerado, baixa o MP4 para Downloads/veo3/<persona>/<item>.mp4 e registra o caminho', async () => {
+  const f = flow({videos: 1, rights:false});
+  f.store.veoFlowState.persona_id = 'maya';
+  const downloads = fakeBackground(f);
+  await f.window.FlowContent.runStep(video, 'p', f.doc, f.window);
+  userClicksGenerate(f);
+  assert.equal(await f.window.FlowContent.lastWatch, 'Novo video');
+  const result = await f.window.FlowContent.lastCollect;
+  assert.equal(result.ok, true);
+  assert.deepEqual({...downloads[0]}, {type:'DOWNLOAD', url:'https://flow.google.com/asb/video-Novo%20video', filename:'veo3/maya/a.mp4'});
+  const item = f.store.veoFlowState.itens[0];
+  assert.equal(item.status, 'gerado');
+  assert.equal(item.video_path, 'Downloads/veo3/maya/a.mp4');
+  assert.equal(item.download_erro, null);
+});
+
+test('bug 2: captura o último frame do vídeo gerado, salva <item>_last.png e o usa no Início do próximo item', async () => {
+  const f = flow({videos: 1, rights:false});
+  f.store.veoFlowState.persona_id = 'maya';
+  const downloads = fakeBackground(f);
+  await f.window.FlowContent.runStep(video, 'p', f.doc, f.window);
+  userClicksGenerate(f);
+  await f.window.FlowContent.lastCollect;
+  assert.ok(f.log.includes('abriu:Novo video'));
+  assert.ok(f.log.includes('frame:00:08:00 / 00:08:00'));
+  assert.equal(f.window.location.pathname, '/project/x');  // voltou ao projeto
+  assert.equal(downloads[1].filename, 'veo3/maya/a_last.png');
+  assert.match(downloads[1].url, /^data:image\/png;base64,/);
+  assert.equal(f.store.veoFlowState.itens[0].ultimo_frame, 'Downloads/veo3/maya/a_last.png');
+  assert.equal(f.store.veoFlowFrames.a.name, 'a_last.png');
+  f.log.length = 0;
+  const next = {...video, id:'b', frame_inicial:''};
+  f.store.veoFlowState.itens.push({id:'b', status:'pendente'});
+  const startFrame = new f.window.File(['png'], 'a_last.png', {type:'image/png'});
+  const r = await f.window.FlowContent.runStep(next, 'continua', f.doc, f.window, {startFrame});
+  assert.equal(r.status, 'preenchido');
+  assert.ok(f.log.includes('upload:a_last.png'));
+  assert.ok(f.log.includes('selecionou:a_last.png'));
+  assert.ok(!f.log.some(l => l.startsWith('abriu:')));
+  assert.ok(!f.log.includes('gerar'));
+});
+
+test('download que falha não impede o último frame, avisa e o "Baixar vídeo atual" refaz pelo nome gravado', async () => {
+  const f = flow({videos: 1, rights:false});
+  const notices = [];
+  f.window.chrome.runtime = {sendMessage: async m => m.type === 'DOWNLOAD'
+    ? (m.filename.endsWith('.mp4') ? {ok:false, error:'SERVER_FORBIDDEN'} : {ok:true, path:m.filename})
+    : notices.push(m.text)};
+  await f.window.FlowContent.runStep(video, 'p', f.doc, f.window);
+  userClicksGenerate(f);
+  const result = await f.window.FlowContent.lastCollect;
+  assert.equal(result.ok, false);
+  assert.equal(f.store.veoFlowState.itens[0].download_erro, 'SERVER_FORBIDDEN');
+  assert.equal(f.store.veoFlowState.itens[0].ultimo_frame, 'veo3/sem_persona/a_last.png');
+  assert.match(notices.at(-1), /Baixar vídeo atual/);
+  f.window.chrome.runtime = {sendMessage: async m => m.type === 'DOWNLOAD' ? {ok:true, path:m.filename} : undefined};
+  const again = await f.window.FlowContent.collectById('a', f.doc);
+  assert.equal(again.ok, true);
+  assert.equal(f.store.veoFlowState.itens[0].video_path, 'veo3/sem_persona/a.mp4');
+});
+
+test('fila sem flow (padrão Vídeo → Frames): não força a duração do item', async () => {
+  const f = flow({rights:false});
+  const r = await f.window.FlowContent.runStep({id:'a', tipo:'veo', duracao_s:6, flow:{modo:'video', proporcao:'9:16', submodo:'frames'}, flow_padrao:true, frame_inicial:''}, 'p', f.doc, f.window);
+  assert.equal(r.status, 'preenchido');
+  assert.equal(f.config.duracao, '8s');  // ficou o que o Flow já tinha
 });

@@ -9,6 +9,12 @@ export function buildPrompt(item, persona) {
   ].filter(Boolean).join('\n\n').replace(/\n\n(Câmera|Fala):/g, '\n$1:');
 }
 
+// Na regeneração de um item rejeitado, a correção da QA substitui o prompt.
+export function promptFor(item, persona) {
+  if (item.status === 'rejeitado' && item.prompt_correcao?.trim()) return item.prompt_correcao.trim();
+  return buildPrompt(item, persona);
+}
+
 export function requiredAttachments(item) {
   if (item.flow) {
     if (item.tipo === 'genjutsu') return ['Vídeo fonte: escolha no popup (sem áudio, até 10s)', 'Personagem: imagem âncora ou a mais recente do projeto (automático)'];

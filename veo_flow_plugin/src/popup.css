@@ -34,6 +34,11 @@ h1 { margin: 6px 0 4px; font-size: 27px; line-height: 1.15; letter-spacing: -.03
 .import-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .secondary-button { padding: 8px; border: 1px solid var(--line); background: var(--input); color: var(--text); }
 .secondary-button:hover:not(:disabled) { border-color: var(--accent); }
+.secondary-button.wide { grid-column: 1 / -1; }
+.current-item { margin: 0 0 10px; font-size: 13px; font-weight: 650; }
+.current-item:empty, .control-hint:empty { display: none; }
+.control-hint.reason { margin-bottom: 0; color: var(--text); }
+.queue-item[aria-current="step"] .item-title { color: var(--accent); }
 .feedback { min-height: 0; margin: 0; color: var(--success); font-size: 13px; }
 .feedback:not(:empty) { margin-top: 12px; }
 .feedback[data-kind="error"] { color: var(--danger); }
@@ -49,8 +54,8 @@ h2 { margin: 0; font-size: 17px; line-height: 1.2; }
 .item-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .item-title { overflow: hidden; margin: 0; font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .status { flex: 0 0 auto; color: var(--secondary); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
-.status[data-status="gerado"] { color: var(--success); }
-.status[data-status="descartado"] { color: var(--danger); }
+.status[data-status="gerado"], .status[data-status="aprovado"] { color: var(--success); }
+.status[data-status="descartado"], .status[data-status="rejeitado"] { color: var(--danger); }
 .item-meta { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
 .attachments { margin: 6px 0 0; padding: 0; list-style: none; color: var(--secondary); font-size: 12px; }
 .attachments li::before { content: "· "; color: var(--accent); }

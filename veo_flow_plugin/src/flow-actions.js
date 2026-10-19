@@ -135,7 +135,7 @@
   }
 
   // No editor, pula para o fim do clipe e lê o frame direto do canvas do player (sem baixar nada).
-  async function captureLastFrame(doc = document, name = 'ultimo_frame.jpg') {
+  async function captureLastFrame(doc = document, name = 'ultimo_frame.png') {
     const end = await waitFor(() => doc.querySelector('[aria-label="Pular para o próximo clipe"]'), 'controles do player');
     const times = () => text(doc.body).match(/\d{2}:\d{2}:\d{2}/g) || [];
     // Antes de carregar, o player mostra 00:00:00 / 00:00:00 e o "pular" não faz nada (visto no Flow real).
@@ -147,12 +147,30 @@
       await sleep(Math.max(delay, 300));
     }
     await sleep(Math.max(delay, 500));  // o canvas redesenha depois do seek
+    const type = /\.jpe?g$/i.test(name) ? 'image/jpeg' : 'image/png';
     const canvas = await waitFor(() => doc.querySelector('canvas'), 'player do vídeo');
     const blob = await new Promise((resolve, reject) => {
-      try { canvas.toBlob(b => b ? resolve(b) : reject(new Error('canvas vazio')), 'image/jpeg', 0.95); }
+      try { canvas.toBlob(b => b ? resolve(b) : reject(new Error('canvas vazio')), type, 0.95); }
       catch (error) { reject(new Error(`Flow: não foi possível ler o frame do player (${error.name}).`)); }
     });
-    return new File([blob], name, {type:'image/jpeg'});
+    return new File([blob], name, {type});
+  }
+
+  // URL do MP4 de um vídeo do grid. No Flow real (2026-10-18) o tile só mostra um <img>; o <video> (src em
+  // flow.google.com/asb/...) aparece ao passar o mouse. fetch e canvas nele falham (CORS), mas chrome.downloads
+  // baixa com os cookies do usuário.
+  async function videoSource(doc = document, name = '') {
+    const tile = await waitFor(() => (name && mediaTiles(doc, 'video').find(t => t.getAttribute('aria-label') === name)) || mediaTiles(doc, 'video')[0], 'vídeo no projeto');
+    const target = tile.querySelector(`${KIND.video} .container`) || tile.querySelector(KIND.video);
+    const win = doc.defaultView;
+    for (const type of ['pointerover', 'pointerenter', 'mouseover', 'mouseenter', 'mousemove']) target.dispatchEvent(new win.MouseEvent(type, {bubbles:true}));
+    const src = await waitFor(() => {
+      const video = tile.querySelector('video');
+      return video && (video.currentSrc || video.src || video.querySelector('source')?.src) || null;
+    }, 'player do vídeo no grid', 10000);
+    for (const type of ['pointerout', 'pointerleave', 'mouseout', 'mouseleave']) target.dispatchEvent(new win.MouseEvent(type, {bubbles:true}));
+    if (!/^https:/.test(src)) throw new Error('Flow: endereço do vídeo não encontrado.');
+    return src;
   }
 
   async function backToProject(doc = document) {
@@ -231,7 +249,7 @@
   const generating = doc => /\b\d{1,3}%/.test(text(doc.querySelector('main') || doc.body));
 
   global.FlowActions = {configure, setStartFrame, attachReference, credits, generating, failures,
-    openVideo, captureLastFrame, backToProject, uploadStartFrame, addVideoElement, addImageElement, readCredits, mediaCount, waitNewMedia,
+    openVideo, captureLastFrame, videoSource, backToProject, uploadStartFrame, addVideoElement, addImageElement, readCredits, mediaCount, waitNewMedia,
     setDelay(ms) { delay = ms; }};
   if (typeof module !== 'undefined' && module.exports) module.exports = global.FlowActions;
 })(globalThis);

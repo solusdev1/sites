@@ -2,21 +2,40 @@
   "manifest_version": 3,
   "name": "Flow Copiloto · Luna",
   "version": "1.0.0",
-  "description": "Importa filas de prompts e preenche manualmente o Flow ou Gemini, sem iniciar a geração.",
-  "permissions": ["storage", "activeTab"],
+  "description": "Importa filas de prompts, prepara cada passo no Flow ou Gemini (sem iniciar a geração), baixa o vídeo gerado e o último frame.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "downloads"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
   "action": {
     "default_title": "Flow Copiloto",
     "default_popup": "popup.html"
   },
   "content_scripts": [
     {
-      "matches": ["https://labs.google/fx/tools/flow*", "https://flow.google.com/*", "https://gemini.google.com/*"],
-      "js": ["src/field-selection.js", "src/flow-actions.js", "src/content.js"],
+      "matches": [
+        "https://labs.google/fx/tools/flow*",
+        "https://flow.google.com/*",
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "src/field-selection.js",
+        "src/flow-actions.js",
+        "src/content.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://flow.google.com/*"],
-      "js": ["src/page-upload.js"],
+      "matches": [
+        "https://flow.google.com/*"
+      ],
+      "js": [
+        "src/page-upload.js"
+      ],
       "world": "MAIN",
       "run_at": "document_start"
     }

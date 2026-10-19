@@ -1,5 +1,5 @@
-import { emptyState, mergeQueue, parseQueue, parsePersona, setPersona, nextStep, markStatus } from './queue.js';
-import { buildPrompt, requiredAttachments } from './prompt.js';
+import { emptyState, mergeQueue, parseQueue, parsePersona, setPersona, nextStep, markStatus, updateItem, startFrameSource, needsChosenFrame, parseVerdict, applyVerdict } from './queue.js';
+import { promptFor, requiredAttachments } from './prompt.js';
 
 const STORAGE_KEY = 'veoFlowState';
 const $ = selector => document.querySelector(selector);
@@ -56,9 +56,18 @@ function renderItem(item, index) {
     li.textContent = attachment;
     attachments.append(li);
   }
+  for (const line of files(item)) {
+    const li = document.createElement('li');
+    li.textContent = line;
+    attachments.append(li);
+  }
   const actions = document.createElement('div');
   actions.className = 'item-actions';
-  if (item.status !== 'gerado') actions.append(button('Marcar gerado', () => updateStatus(item.id, 'gerado')));
+  if (['pendente', 'preenchido'].includes(item.status)) actions.append(button('Marcar gerado', () => updateStatus(item.id, 'gerado')));
+  if (['gerado', 'rejeitado'].includes(item.status)) actions.append(button('Aprovar', () => updateStatus(item.id, 'aprovado')));
+  if (['gerado', 'aprovado'].includes(item.status)) actions.append(button('Rejeitar', () => updateStatus(item.id, 'rejeitado')));
+  if (item.flow_midia && item.tipo !== 'imagem') actions.append(button('Baixar vídeo atual', () => collectCurrent(item)));
+  if (['gerado', 'aprovado', 'rejeitado'].includes(item.status) && item.tipo !== 'imagem') actions.append(button('Usar outro frame', () => chooseFrameFor(item)));
   if (item.status !== 'descartado') actions.append(button('Descartar', () => updateStatus(item.id, 'descartado')));
   if (item.status !== 'pendente') actions.append(button('Voltar a pendente', () => updateStatus(item.id, 'pendente')));
   content.append(top, meta, attachments, actions);
@@ -66,7 +75,24 @@ function renderItem(item, index) {
   return row;
 }
 
-function stepLabel(item) {
+// Caminhos gravados no estado: o que já foi baixado e o frame que continua a sequência.
+function files(item) {
+  const lines = [];
+  if (item.video_path) lines.push(`Vídeo: ${item.video_path}`);
+  else if (item.download_erro) lines.push(`Vídeo não baixado: ${item.download_erro}`);
+  if (item.frame_indicado) lines.push(`Frame de continuação (indicado): ${item.frame_indicado}`);
+  else if (item.ultimo_frame) lines.push(`Último frame: ${item.ultimo_frame}`);
+  else if (item.frame_erro) lines.push(`Último frame não salvo: ${item.frame_erro}`);
+  if (item.qa?.motivos?.length) lines.push(`QA (${item.qa.verdict}): ${item.qa.motivos.join('; ')}`);
+  return lines;
+}
+
+function stepLabel(item, action) {
+  if (action === 'regenerar') return 'Regenerar este';
+  if (action === 'aguardar') return 'Preencher de novo';
+  if (action === 'revisar') return 'Aguardando aprovação';
+  if (action === 'escolher_frame') return 'Escolher o frame indicado';
+  if (action === 'fim') return 'Fila concluída';
   if (!item?.flow) return 'Preencher próximo';
   if (item.tipo === 'genjutsu') return 'Escolher vídeo fonte e preparar genjutsu';
   if (item.tipo === 'imagem') return 'Preparar imagem';
@@ -75,16 +101,21 @@ function stepLabel(item) {
 
 function render() {
   const pending = state.itens.filter(item => item.status === 'pendente').length;
-  const {item: next} = nextStep(state);
+  const step = nextStep(state);
+  const {item: next, action} = step;
+  const index = next ? state.itens.indexOf(next) : -1;
+  $('#current-item').textContent = next ? `Item atual: ${String(index + 1).padStart(2, '0')} · ${next.hook || next.id} (${next.status})` : (state.itens.length ? 'Sem item atual' : '');
+  $('#current-reason').textContent = step.reason || '';
   $('#persona-name').textContent = state.persona?.nome || state.persona_id || 'Sem persona';
   $('#queue-count').textContent = `${state.itens.length} ${state.itens.length === 1 ? 'item' : 'itens'}`;
   $('#pending-count').textContent = `${pending} ${pending === 1 ? 'pendente' : 'pendentes'}`;
-  $('#fill-next').disabled = busy || pending === 0;
-  $('#fill-next').textContent = busy ? 'Executando…' : stepLabel(next);
+  $('#fill-next').disabled = busy || !next || ['revisar', 'fim', 'bloqueado'].includes(action);
+  $('#fill-next').textContent = busy ? 'Executando…' : stepLabel(next, action);
   $('#export-state').disabled = state.itens.length === 0 && !state.persona;
   $('#clear-state').disabled = state.itens.length === 0 && !state.persona;
   const list = $('#queue-list');
   list.replaceChildren(...state.itens.map(renderItem));
+  list.children[index]?.setAttribute('aria-current', 'step');
   $('#empty-state').hidden = state.itens.length > 0;
 }
 
@@ -136,6 +167,7 @@ async function send(tab, message) {
 }
 
 const MAX_SOURCE_S = 10.5;
+const FRAMES_KEY = 'veoFlowFrames';
 
 function videoDuration(file) {
   return new Promise(resolve => {
@@ -153,7 +185,7 @@ function readDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Não foi possível ler o vídeo fonte.'));
+    reader.onerror = () => reject(new Error(`Não foi possível ler ${file.name}.`));
     reader.readAsDataURL(file);
   });
 }
@@ -173,22 +205,33 @@ async function chooseSource(file) {
 
 let pendingVideo = null;
 
+// Fila sem `flow` (ex.: fila semanal) aberta no Flow: vídeo em Vídeo → Frames 9:16, para encadear pelo último frame.
+const DEFAULT_VIDEO_FLOW = Object.freeze({modo:'video', proporcao:'9:16', submodo:'frames'});
+function withFlow(item, tab) {
+  if (item.flow || item.tipo !== 'veo' || new URL(tab.url).origin !== 'https://flow.google.com') return item;
+  return {...item, flow:DEFAULT_VIDEO_FLOW, flow_padrao:true};
+}
+
 async function fillNext() {
-  const {item, blockedBy} = nextStep(state);
-  if (!item || busy) return;
-  if (blockedBy) { feedback(`Antes, gere e confira "${blockedBy.hook}" (status: ${blockedBy.status}).`, 'error'); return; }
-  if (item.tipo === 'genjutsu' && item.flow && !pendingVideo) { $('#video-file').click(); return; }
+  const {item: next, action, reason} = nextStep(state);
+  if (!next || busy) return;
+  if (['bloqueado', 'revisar', 'fim'].includes(action)) { feedback(reason, 'error'); return; }
+  if (action === 'escolher_frame') { chooseFrameFor(state.itens.find(needsChosenFrame)); return; }
+  if (next.tipo === 'genjutsu' && next.flow && !pendingVideo) { $('#video-file').click(); return; }
   busy = true;
   render();
   try {
-    const prompt = buildPrompt(item, state.persona);
-    const tab = await flowTab(item);
+    const prompt = promptFor(next, state.persona);
+    const tab = await flowTab(next);
+    const item = withFlow(next, tab);
     if (item.flow) {
+      const source = startFrameSource(state, item);
       if (item.frame_inicial?.startsWith('ultimo_frame:')) feedback('Capturando o último frame do vídeo anterior e enviando para o Início…');
       else if (item.tipo === 'genjutsu') feedback(`Enviando ${pendingVideo.name} e a personagem para o Flow… pode levar um minuto.`);
       const video = item.tipo === 'genjutsu' ? pendingVideo : null;
       pendingVideo = null;
-      const result = await send(tab, {type:'RUN_STEP', item, prompt, video});
+      if (source) feedback(`Enviando o frame de "${state.itens.find(i => i.id === source.item_id)?.hook || source.item_id}" para o Início…`);
+      const result = await send(tab, {type:'RUN_STEP', item, prompt, video, startFrameKey:source?.key || null});
       if (!result?.ok) throw new Error(result?.error || 'O Flow não confirmou o passo.');
       await reload();
       feedback(result.next);
@@ -200,6 +243,57 @@ async function fillNext() {
     feedback(`Prompt ${item.id} preenchido. Anexe os arquivos e clique em Generate na página.`);
   } catch (error) { feedback(error.message, 'error'); }
   finally { busy = false; render(); }
+}
+
+// "Baixar vídeo atual": refaz o download do MP4 e do último frame na aba do Flow.
+async function collectCurrent(item) {
+  if (busy) return;
+  busy = true;
+  render();
+  try {
+    const tab = await flowTab({...item, flow:item.flow || DEFAULT_VIDEO_FLOW});
+    feedback('Baixando o vídeo e capturando o último frame no Flow…');
+    const result = await send(tab, {type:'COLLECT', item_id:item.id});
+    await reload();
+    if (!result?.ok) throw new Error(result?.error || [result?.download_erro, result?.frame_erro].filter(Boolean).join('; ') || 'O Flow não confirmou o download.');
+    feedback(`Salvo: ${result.video_path} e ${result.ultimo_frame}.`);
+  } catch (error) { feedback(error.message, 'error'); }
+  finally { busy = false; render(); }
+}
+
+// "Usar outro frame": o usuário (ou a QA, pelo veredito) indica o frame que continua a sequência.
+let frameTarget = null;
+function chooseFrameFor(item) {
+  if (!item) return;
+  frameTarget = item.id;
+  $('#frame-file').click();
+}
+
+async function useFrame(file) {
+  $('#frame-file').value = '';
+  const id = frameTarget;
+  frameTarget = null;
+  if (!file || !id) return;
+  try {
+    const data = await readDataUrl(file);
+    const frames = (await chrome.storage.local.get(FRAMES_KEY))[FRAMES_KEY] || {};
+    const kept = Object.entries(frames).filter(([key]) => key !== `${id}:indicado`).slice(-2);  // cota de 10 MB
+    await chrome.storage.local.set({[FRAMES_KEY]: Object.fromEntries([...kept, [`${id}:indicado`, {name:file.name, data}]])});
+    await save(updateItem(state, id, {frame_indicado:file.name}));
+    feedback(`O próximo vídeo vai começar em ${file.name}.`);
+  } catch (error) { feedback(error.message, 'error'); }
+}
+
+async function importVerdict(file) {
+  $('#verdict-file').value = '';
+  if (!file) return;
+  try {
+    const verdict = parseVerdict(await file.text());
+    await save(applyVerdict(state, verdict));
+    const item = state.itens.find(other => other.id === verdict.item_id);
+    const extra = needsChosenFrame(item) ? ` A QA indicou o frame ${verdict.frame_continuacao}: clique em "Escolher o frame indicado" e selecione esse arquivo.` : '';
+    feedback(`Veredito aplicado: "${item.hook || item.id}" ${verdict.verdict}.${extra}`, verdict.verdict === 'aprovado' ? 'success' : 'error');
+  } catch (error) { feedback(error.message, 'error'); }
 }
 
 async function reload() {
@@ -234,6 +328,9 @@ $('#queue-file').addEventListener('change', event => importQueue(event.target.fi
 $('#persona-file').addEventListener('change', event => importPersona(event.target.files?.[0]));
 $('#fill-next').addEventListener('click', fillNext);
 $('#video-file').addEventListener('change', event => chooseSource(event.target.files?.[0]));
+$('#import-verdict-button').addEventListener('click', () => $('#verdict-file').click());
+$('#verdict-file').addEventListener('change', event => importVerdict(event.target.files?.[0]));
+$('#frame-file').addEventListener('change', event => useFrame(event.target.files?.[0]));
 $('#export-state').addEventListener('click', exportState);
 $('#clear-state').addEventListener('click', clearState);
 chrome.runtime.onMessage.addListener(message => { if (message?.type === 'FLOW_NOTICE') feedback(message.text, message.kind || 'error'); });

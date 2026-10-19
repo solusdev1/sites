@@ -19,14 +19,19 @@
         <span id="persona-name">Sem persona</span>
         <span id="queue-count" class="count">0 itens</span>
       </div>
+      <p id="current-item" class="current-item"></p>
       <button id="fill-next" class="primary-button" type="button">Preencher próximo</button>
-      <p class="control-hint">A extensão prepara cada passo no Flow; o clique em gerar é sempre seu.</p>
+      <p id="current-reason" class="control-hint reason"></p>
+      <p class="control-hint">A extensão prepara cada passo no Flow; o clique em gerar é sempre seu. Ela só avança depois que você aprova o item atual.</p>
       <div class="import-row">
         <button id="import-queue-button" class="secondary-button" type="button">Importar fila</button>
         <button id="import-persona-button" class="secondary-button" type="button">Importar persona</button>
+        <button id="import-verdict-button" class="secondary-button wide" type="button">Importar veredito</button>
       </div>
       <input id="queue-file" class="visually-hidden" type="file" accept="application/json,.json" aria-label="Selecione fila.json ou fila_genjutsu.json">
       <input id="persona-file" class="visually-hidden" type="file" accept="application/json,.json" aria-label="Selecione persona.json">
+      <input id="verdict-file" class="visually-hidden" type="file" accept="application/json,.json" aria-label="Selecione o arquivo item_id.verdict.json da QA">
+      <input id="frame-file" class="visually-hidden" type="file" accept="image/png,image/jpeg,.png,.jpg" aria-label="Selecione o frame que continua a sequência">
       <input id="video-file" class="visually-hidden" type="file" accept="video/mp4,.mp4,.mov,.m4v" aria-label="Selecione o vídeo fonte do genjutsu">
       <p id="feedback" class="feedback" role="status" aria-live="polite"></p>
     </section>
