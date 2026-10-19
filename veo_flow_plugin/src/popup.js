@@ -58,7 +58,6 @@ function renderItem(item, index) {
   }
   const actions = document.createElement('div');
   actions.className = 'item-actions';
-  if (item.flow?.modo === 'video' && item.status === 'preenchido') actions.append(button('Gerar vídeo (usa créditos)', () => generateVideo(item)));
   if (item.status !== 'gerado') actions.append(button('Marcar gerado', () => updateStatus(item.id, 'gerado')));
   if (item.status !== 'descartado') actions.append(button('Descartar', () => updateStatus(item.id, 'descartado')));
   if (item.status !== 'pendente') actions.append(button('Voltar a pendente', () => updateStatus(item.id, 'pendente')));
@@ -70,7 +69,7 @@ function renderItem(item, index) {
 function stepLabel(item) {
   if (!item?.flow) return 'Preencher próximo';
   if (item.tipo === 'genjutsu') return 'Escolher vídeo fonte e preparar genjutsu';
-  if (item.tipo === 'imagem') return 'Gerar imagem (0 créditos)';
+  if (item.tipo === 'imagem') return 'Preparar imagem';
   return item.frame_inicial?.startsWith('ultimo_frame:') ? 'Preparar vídeo a partir do último frame' : 'Preparar vídeo';
 }
 
@@ -185,8 +184,7 @@ async function fillNext() {
     const prompt = buildPrompt(item, state.persona);
     const tab = await flowTab(item);
     if (item.flow) {
-      if (item.tipo === 'imagem') feedback('Gerando a imagem no Flow… pode fechar o popup; o status atualiza sozinho.');
-      else if (item.frame_inicial?.startsWith('ultimo_frame:')) feedback('Capturando o último frame do vídeo anterior e enviando para o Início…');
+      if (item.frame_inicial?.startsWith('ultimo_frame:')) feedback('Capturando o último frame do vídeo anterior e enviando para o Início…');
       else if (item.tipo === 'genjutsu') feedback(`Enviando ${pendingVideo.name} e a personagem para o Flow… pode levar um minuto.`);
       const video = item.tipo === 'genjutsu' ? pendingVideo : null;
       pendingVideo = null;
@@ -200,20 +198,6 @@ async function fillNext() {
     if (!result?.ok) throw new Error(result?.error || 'O editor não confirmou o preenchimento.');
     await save(markStatus(state, item.id, 'preenchido'));
     feedback(`Prompt ${item.id} preenchido. Anexe os arquivos e clique em Generate na página.`);
-  } catch (error) { feedback(error.message, 'error'); }
-  finally { busy = false; render(); }
-}
-
-async function generateVideo(item) {
-  if (busy || !window.confirm(`Gerar o vídeo "${item.hook}" no Flow? Isso usa créditos da sua assinatura.`)) return;
-  busy = true;
-  render();
-  feedback('Gerando o vídeo no Flow (leva alguns minutos). Pode fechar o popup; o status vira "gerado" quando o vídeo aparecer.');
-  try {
-    const result = await send(await flowTab(item), {type:'GENERATE_VIDEO', item});
-    if (!result?.ok) throw new Error(result?.error || 'O Flow não iniciou a geração.');
-    await reload();
-    feedback('Vídeo gerado. O próximo passo captura o último frame dele automaticamente.');
   } catch (error) { feedback(error.message, 'error'); }
   finally { busy = false; render(); }
 }
@@ -252,7 +236,7 @@ $('#fill-next').addEventListener('click', fillNext);
 $('#video-file').addEventListener('change', event => chooseSource(event.target.files?.[0]));
 $('#export-state').addEventListener('click', exportState);
 $('#clear-state').addEventListener('click', clearState);
-chrome.runtime.onMessage.addListener(message => { if (message?.type === 'FLOW_NOTICE') feedback(message.text, 'error'); });
+chrome.runtime.onMessage.addListener(message => { if (message?.type === 'FLOW_NOTICE') feedback(message.text, message.kind || 'error'); });
 chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[STORAGE_KEY] && !busy) reload(); });
 
 try {

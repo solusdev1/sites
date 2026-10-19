@@ -5,6 +5,9 @@ import { JSDOM } from 'jsdom';
 
 const read = name => readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8');
 const scripts = ['field-selection.js', 'flow-actions.js', 'content.js'].map(read);
+// Cada passo deixa um acompanhamento esperando o clique do usuário: fechar a janela encerra os timers.
+const windows = [];
+test.afterEach(() => { while (windows.length) windows.pop().close(); });
 
 // Flow falso com o comportamento mapeado no Flow real (2026-10-18): menu de radios do Angular CDK que fecha com
 // Escape no body, seletor de mídia com abas/opções/"Incluir no comando", geração com "%" e Estender no editor de cena.
@@ -107,19 +110,27 @@ function flow({credits = {imagem: 0, video: 15}, videos = 0, failSilently = fals
   };
   new window.MutationObserver(renderSlots).observe(overlay, {childList:true});
   const grid = doc.querySelector('.grid');
-  const addTile = name => {
-    const tile = doc.createElement('button');
-    tile.textContent = `play_circle ${name}`;
-    tile.addEventListener('click', () => openEditor(name));
-    grid.prepend(tile);  // mais recente primeiro
+  // Como no Flow real: flow-grid-tile-container[aria-label] > flow-video-tile|flow-image-tile > .container (abre o
+  // editor) + rodapé div[role=button] com o nome (clicar no rodapé NÃO abre nada). Mais recente primeiro.
+  const addTile = (name, icon = 'play_circle') => {
+    const tile = doc.createElement('flow-grid-tile-container');
+    tile.setAttribute('role', 'group');
+    tile.setAttribute('aria-label', name);
+    const kind = doc.createElement(icon === 'play_circle' ? 'flow-video-tile' : 'flow-image-tile');
+    kind.innerHTML = `<div class="container"></div><div role="button" aria-label="${name}">${icon} ${name}</div>`;
+    if (icon === 'play_circle') kind.querySelector('.container').addEventListener('click', () => openEditor(name));
+    tile.append(kind);
+    grid.prepend(tile);
   };
   for (let i = 1; i <= videos; i++) addTile(`Video ${i}`);
   function openEditor(name) {
     window.history.pushState({}, '', '/project/x/edit/v');
     const ed = doc.querySelector('.editor');
-    ed.innerHTML = '<button aria-label="Botão &quot;Voltar&quot; para acessar a página anterior">arrow_back</button><canvas width="1080" height="1920"></canvas><span class="t">00:00:00 / 00:08:00</span><button aria-label="Pular para o próximo clipe">skip_next</button>';
+    // Como no Flow real: o player começa em 00:00:00 / 00:00:00 e só aceita "pular" depois de carregar.
+    ed.innerHTML = '<button aria-label="Botão &quot;Voltar&quot; para acessar a página anterior">arrow_back</button><canvas width="1080" height="1920"></canvas><span class="t">00:00:00 / 00:00:00</span><button aria-label="Pular para o próximo clipe">skip_next</button>';
+    setTimeout(() => { const t = ed.querySelector('.t'); if (t) t.textContent = '00:00:00 / 00:08:00'; }, 25);
     ed.querySelector('canvas').toBlob = cb => { log.push(`frame:${ed.querySelector('.t').textContent}`); cb(new window.Blob(['jpg'], {type:'image/jpeg'})); };
-    ed.querySelector('[aria-label="Pular para o próximo clipe"]').addEventListener('click', () => { ed.querySelector('.t').textContent = '00:08:00 / 00:08:00'; });
+    ed.querySelector('[aria-label="Pular para o próximo clipe"]').addEventListener('click', () => { const t = ed.querySelector('.t'); if (!t.textContent.endsWith('00:00:00')) t.textContent = '00:08:00 / 00:08:00'; });
     ed.querySelector('button').addEventListener('click', () => { window.history.pushState({}, '', '/project/x'); ed.replaceChildren(); log.push('voltar'); });
     log.push(`abriu:${name}`);
   }
@@ -201,10 +212,15 @@ function flow({credits = {imagem: 0, video: 15}, videos = 0, failSilently = fals
     const progress = doc.createElement('span');
     progress.textContent = '42%';
     grid.prepend(progress);
-    setTimeout(() => { progress.remove(); if (config.modo === 'video' && !failSilently) addTile('Novo video'); }, 30);
+    setTimeout(() => {
+      progress.remove();
+      if (failSilently) { const card = doc.createElement('div'); card.textContent = 'Falha Não é possível editar a fala neste vídeo.'; grid.prepend(card); return; }
+      addTile(config.modo === 'video' ? 'Novo video' : 'Nova imagem', config.modo === 'video' ? 'play_circle' : 'image');
+    }, 30);
   });
   for (const s of scripts) window.eval(s);
   window.FlowActions.setDelay(1);
+  windows.push(window);
   store.veoFlowState = {version:1, itens:[{id:'a', status:'pendente'}]};
   return {window, doc, config, log, store, editor, elements};
 }
@@ -212,35 +228,43 @@ function flow({credits = {imagem: 0, video: 15}, videos = 0, failSilently = fals
 const imagem = {id:'a', tipo:'imagem', flow:{modo:'imagem', proporcao:'9:16', submodo:null}, frame_inicial:''};
 const video = {id:'a', tipo:'veo', duracao_s:10, flow:{modo:'video', proporcao:'9:16', submodo:'frames', modelo:'Omni 1.1 Flash', resolucao:'720p'}, frame_inicial:'item:img'};
 const status = f => f.store.veoFlowState.itens[0].status;
+// O Flow só aceita clique real no botão de gerar: nos testes, o "usuário" clica.
+const userClicksGenerate = f => f.doc.querySelector('[aria-label="Iniciar geração"]').click();
 
-test('imagem: configura Imagem 9:16, preenche e gera sozinha com 0 créditos', async () => {
+test('imagem: configura Imagem 9:16, preenche, NÃO clica em gerar; marca gerado quando o usuário gera', async () => {
   const f = flow();
   const r = await f.window.FlowContent.runStep(imagem, 'Retrato da Luna', f.doc, f.window);
-  assert.equal(r.ok, true);
-  assert.equal(r.status, 'gerado');
+  assert.equal(r.status, 'preenchido');
+  assert.equal(r.credits, 0);
+  assert.match(r.next, /Clique na seta de gerar/);
   assert.deepEqual({modo:f.config.modo, proporcao:f.config.proporcao}, {modo:'imagem', proporcao:'9:16'});
   assert.equal(f.editor.textContent, 'Retrato da Luna');
-  assert.ok(f.log.includes('gerar'));
+  assert.ok(!f.log.includes('gerar'));
   assert.equal(f.doc.querySelector('.cdk-overlay-container').children.length, 0);
+  assert.equal(status(f), 'preenchido');
+  userClicksGenerate(f);
+  assert.equal(await f.window.FlowContent.lastWatch, 'Nova imagem');
   assert.equal(status(f), 'gerado');
+  assert.equal(f.store.veoFlowState.itens[0].flow_midia, 'Nova imagem');
 });
 
-test('imagem com referência anexa a imagem anterior antes de gerar', async () => {
+test('imagem com referência anexa a imagem anterior', async () => {
   const f = flow();
   await f.window.FlowContent.runStep({...imagem, frame_inicial:'item:ref'}, '1º frame', f.doc, f.window);
-  assert.ok(f.log.indexOf('elemento:Woman standing in studio') < f.log.indexOf('gerar'));
+  assert.ok(f.log.includes('elemento:Woman standing in studio'));
+  assert.ok(!f.log.includes('gerar'));
 });
 
-test('imagem NÃO é gerada se o Flow cobrar créditos', async () => {
+test('imagem com custo mostra os créditos e também espera o clique do usuário', async () => {
   const f = flow({credits:{imagem:5, video:10}});
   const r = await f.window.FlowContent.runStep(imagem, 'Retrato', f.doc, f.window);
   assert.equal(r.status, 'preenchido');
   assert.equal(r.credits, 5);
+  assert.match(r.next, /5 créditos/);
   assert.ok(!f.log.includes('gerar'));
-  assert.equal(status(f), 'preenchido');
 });
 
-test('vídeo: Vídeo → Frames 9:16, frame inicial da imagem mais recente, preenche e NÃO gera', async () => {
+test('vídeo: Vídeo → Frames, Omni 720p 10s, frame inicial da imagem mais recente, preenche e NÃO gera', async () => {
   const f = flow();
   const r = await f.window.FlowContent.runStep(video, 'Luna abre a porta', f.doc, f.window);
   assert.equal(r.status, 'preenchido');
@@ -251,13 +275,15 @@ test('vídeo: Vídeo → Frames 9:16, frame inicial da imagem mais recente, pree
   assert.equal(f.editor.textContent, 'Luna abre a porta');
 });
 
-test('vídeo seguinte: captura o último frame do vídeo anterior, volta, sobe no Início e espera o Concordo do usuário', async () => {
+test('vídeo seguinte: abre o vídeo anterior PELO NOME gravado, captura o último frame, sobe no Início e espera o Concordo', async () => {
   const f = flow({videos: 2});
+  // 'Video 2' é o mais recente, mas o item de origem registrou 'Video 1' (ex.: um envio entrou no meio).
+  f.store.veoFlowState.itens.push({id:'v1', status:'gerado', flow_midia:'Video 1'});
   const notices = [];
-  f.window.chrome.runtime = {sendMessage: async m => { notices.push(m.text); f.doc.querySelector('[role="dialog"] button:last-child').click(); }};
+  f.window.chrome.runtime = {sendMessage: async m => { notices.push(m.text); f.doc.querySelector('[role="dialog"] button:last-child')?.click(); }};
   const r = await f.window.FlowContent.runStep({...video, frame_inicial:'ultimo_frame:v1'}, 'Ela diz Siga-nos', f.doc, f.window);
   assert.equal(r.status, 'preenchido');
-  const order = ['abriu:Video 2', 'frame:00:08:00 / 00:08:00', 'voltar', 'radio:9:16', 'upload:ultimo_frame_v1.jpg', 'concordo(usuario)', 'selecionou:ultimo_frame_v1.jpg'];
+  const order = ['abriu:Video 1', 'frame:00:08:00 / 00:08:00', 'voltar', 'radio:9:16', 'upload:ultimo_frame_v1.jpg', 'concordo(usuario)', 'selecionou:ultimo_frame_v1.jpg'];
   assert.deepEqual(f.log.filter(l => order.includes(l)), order);
   assert.ok(f.log.indexOf('modelo:Omni 1.1 Flash') < f.log.indexOf('upload:ultimo_frame_v1.jpg'));
   assert.match(notices[0], /Concordo/);
@@ -266,15 +292,26 @@ test('vídeo seguinte: captura o último frame do vídeo anterior, volta, sobe n
   assert.equal(f.window.location.pathname, '/project/x');
 });
 
-test('gerar vídeo só marca gerado quando o vídeo novo aparece; falha silenciosa do Flow vira erro', async () => {
+test('sem nome gravado, o vídeo seguinte usa o vídeo mais recente', async () => {
+  const f = flow({videos: 2, rights:false});
+  await f.window.FlowContent.runStep({...video, frame_inicial:'ultimo_frame:v1'}, 'p', f.doc, f.window);
+  assert.ok(f.log.includes('abriu:Video 2'));
+});
+
+test('acompanhamento: vídeo novo após o clique do usuário vira gerado; card "Falha" do Flow vira erro e mantém preenchido', async () => {
   const ok = flow({videos: 1});
   await ok.window.FlowContent.runStep(video, 'p', ok.doc, ok.window);
-  assert.equal((await ok.window.FlowContent.generateVideo(video, ok.doc)).status, 'gerado');
+  userClicksGenerate(ok);
+  assert.equal(await ok.window.FlowContent.lastWatch, 'Novo video');
   assert.equal(status(ok), 'gerado');
   const falha = flow({videos: 1, failSilently: true});
+  const notices = [];
+  falha.window.chrome.runtime = {sendMessage: async m => notices.push(m.text)};
   await falha.window.FlowContent.runStep(video, 'p', falha.doc, falha.window);
-  await assert.rejects(falha.window.FlowContent.generateVideo(video, falha.doc, {timeout: 300}), /falhado sem aviso/);
+  userClicksGenerate(falha);
+  await assert.rejects(falha.window.FlowContent.lastWatch, /geração falhou/);
   assert.equal(status(falha), 'preenchido');
+  assert.match(notices.at(-1), /Falha/);
 });
 
 const genjutsu = {id:'a', tipo:'genjutsu', modo:'motion', duracao_s:10, anexos:{imagem_ancora:'', video_fonte:'trend_mudo.mp4'},
@@ -306,4 +343,12 @@ test('genjutsu usa a imagem âncora pelo nome quando ela existe; senão, a mais 
   const semAncora = flow({rights:false, images:['Imagem recente', 'outra.png']});
   await semAncora.window.FlowContent.runStep(item, 'p', semAncora.doc, semAncora.window, {video: new semAncora.window.File(['mp4'], 'trend_mudo.mp4', {type:'video/mp4'})});
   assert.equal(semAncora.elements[1].name, 'Imagem recente');
+});
+
+test('arquivo que já está no projeto com o mesmo nome é reaproveitado, sem reenviar', async () => {
+  const f = flow({rights:false});
+  const video = new f.window.File(['mp4'], 'Woman walking toward camera.mp4', {type:'video/mp4'});
+  await f.window.FlowContent.runStep(genjutsu, 'p', f.doc, f.window, {video});
+  assert.ok(!f.log.some(l => l.startsWith('upload:')));
+  assert.deepEqual(f.elements[0], {name:'Woman walking toward camera', video:true});
 });

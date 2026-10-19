@@ -31,12 +31,39 @@
   const STORAGE_KEY = 'veoFlowState';
 
   // O content script grava o status sozinho: o popup pode fechar no meio da geração.
-  async function saveStatus(id, status) {
+  async function readState() {
     const storage = global.chrome?.storage?.local;
-    if (!storage) return;
-    const state = (await storage.get(STORAGE_KEY))[STORAGE_KEY];
+    return storage ? (await storage.get(STORAGE_KEY))[STORAGE_KEY] : null;
+  }
+
+  async function saveStatus(id, status, extra = {}) {
+    const state = await readState();
     if (!state?.itens) return;
-    await storage.set({[STORAGE_KEY]: {...state, itens: state.itens.map(item => item.id === id ? {...item, status} : item)}});
+    await global.chrome.storage.local.set({[STORAGE_KEY]: {...state, itens: state.itens.map(item => item.id === id ? {...item, ...extra, status} : item)}});
+  }
+
+  // Depois de preparar, acompanha o clique do usuário em gerar: quando o resultado aparece, marca 'gerado'
+  // e guarda o nome da mídia no Flow (flow_midia), usado para achar o vídeo certo no passo seguinte.
+  function watchGeneration(item, kind, doc) {
+    const actions = global.FlowActions;
+    const before = actions.mediaCount(doc, kind);
+    const failuresBefore = actions.failures(doc);
+    const watch = actions.waitNewMedia(kind, before, doc, undefined, failuresBefore).then(async name => {
+      await saveStatus(item.id, 'gerado', {flow_midia:name});
+      notify(`"${item.hook || item.id}" gerado no Flow (${name}).`, 'success');
+      return name;
+    }, error => { notify(error.message); throw error; });
+    watch.catch(() => {});
+    FlowContent.lastWatch = watch;
+    return watch;
+  }
+
+  async function ready(item, kind, credits, doc, intro) {
+    await saveStatus(item.id, 'preenchido');
+    watchGeneration(item, kind, doc);
+    const cost = credits === 0 ? '0 créditos' : `${credits ?? '?'} créditos`;
+    return {ok:true, status:'preenchido', credits,
+      next:`${intro} Clique na seta de gerar no Flow (${cost}); a extensão acompanha e marca "gerado" quando o resultado aparecer.`};
   }
 
   function fillOrThrow(prompt, doc, win) {
@@ -44,7 +71,7 @@
     if (!result.ok) throw new Error(result.error);
   }
 
-  // Imagem: gera sozinho, mas só se o Flow mostrar 0 créditos. Vídeo: prepara e espera confirmação.
+  // Prepara o passo inteiro no Flow; o clique em gerar é do usuário (o Flow ignora cliques sintéticos).
   async function runStep(item, prompt, doc = document, win = doc.defaultView, {video} = {}) {
     const actions = global.FlowActions;
     const frame = item.frame_inicial || '';
@@ -57,49 +84,32 @@
       await actions.addImageElement(doc, (item.anexos?.imagem_ancora || '').split(/[\\/]/).pop());
       const credits = await actions.readCredits(doc, win);
       fillOrThrow(prompt, doc, win);
-      await saveStatus(item.id, 'preenchido');
-      return {ok:true, status:'preenchido', credits, next:`Genjutsu pronto: vídeo fonte e personagem anexados. Gere o vídeo (${credits ?? '?'} créditos).`};
+      return ready(item, 'video', credits, doc, 'Genjutsu pronto: vídeo fonte e personagem anexados.');
     }
     if (frame.startsWith('ultimo_frame:')) {
       // Último frame do vídeo anterior vira o Início de um vídeo novo (sem "Estender").
-      await actions.openLatestVideo(doc);
+      const source = (await readState())?.itens?.find(other => other.id === frame.split(':')[1]);
+      await actions.openVideo(doc, source?.flow_midia || '');
       const file = await actions.captureLastFrame(doc, `ultimo_frame_${frame.split(':')[1]}.jpg`);
       await actions.backToProject(doc);
       const {credits} = await actions.configure(item.flow, doc, win, {duracao_s:item.duracao_s});
       await actions.uploadStartFrame(file, doc, win, {onRights});
       fillOrThrow(prompt, doc, win);
-      await saveStatus(item.id, 'preenchido');
-      return {ok:true, status:'preenchido', credits, next:`Último frame no Início e prompt pronto. Gere o vídeo (${credits ?? '?'} créditos).`};
+      return ready(item, 'video', credits, doc, 'Último frame do vídeo anterior no Início e prompt pronto.');
     }
     const {credits} = await actions.configure(item.flow, doc, win, {duracao_s:item.duracao_s});
     if (item.tipo === 'imagem') {
       if (frame.startsWith('item:')) await actions.attachReference(doc);
       fillOrThrow(prompt, doc, win);
-      if (credits !== 0) {
-        await saveStatus(item.id, 'preenchido');
-        return {ok:true, status:'preenchido', credits, next:`Esta imagem custaria ${credits ?? '?'} créditos; gere manualmente se quiser.`};
-      }
-      await actions.generate(doc, {wait:true});
-      await saveStatus(item.id, 'gerado');
-      return {ok:true, status:'gerado', credits, next:'Confira a imagem no Flow. Se não ficou fiel à persona, use "Voltar a pendente" e execute de novo.'};
+      return ready(item, 'imagem', credits, doc, 'Imagem pronta (confira a fidelidade à persona depois de gerar).');
     }
     if (frame.startsWith('item:')) await actions.setStartFrame(doc);
     fillOrThrow(prompt, doc, win);
-    await saveStatus(item.id, 'preenchido');
-    return {ok:true, status:'preenchido', credits, next:`Vídeo pronto para gerar (${credits ?? '?'} créditos).`};
+    return ready(item, 'video', credits, doc, 'Vídeo pronto.');
   }
 
-  // Só marca 'gerado' quando o vídeo novo aparece no projeto; falha silenciosa do Flow vira erro.
-  async function generateVideo(item, doc = document, {timeout} = {}) {
-    const before = global.FlowActions.videoTiles(doc);
-    await global.FlowActions.generate(doc);
-    await global.FlowActions.waitNewVideo(before, doc, timeout);
-    await saveStatus(item.id, 'gerado');
-    return {ok:true, status:'gerado'};
-  }
-
-  function notify(text) {
-    try { global.chrome?.runtime?.sendMessage?.({type:'FLOW_NOTICE', text})?.catch?.(() => {}); } catch { /* popup fechado */ }
+  function notify(text, kind = 'error') {
+    try { global.chrome?.runtime?.sendMessage?.({type:'FLOW_NOTICE', text, kind})?.catch?.(() => {}); } catch { /* popup fechado */ }
   }
 
   // O popup manda o vídeo fonte como data URL (mensagens da extensão não carregam File).
@@ -114,7 +124,8 @@
     return true;
   };
 
-  global.FlowContent = {fillPrompt, runStep, generateVideo};
+  const FlowContent = {fillPrompt, runStep, lastWatch:null};
+  global.FlowContent = FlowContent;
   if (global.chrome?.runtime?.onMessage) {
     global.chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message?.type === 'FILL_PROMPT') {
@@ -122,7 +133,6 @@
         return false;
       }
       if (message?.type === 'RUN_STEP') return respond(toFile(message.video).then(video => runStep(message.item, message.prompt, document, window, {video})), sendResponse);
-      if (message?.type === 'GENERATE_VIDEO') return respond(generateVideo(message.item), sendResponse);
       return false;
     });
   }

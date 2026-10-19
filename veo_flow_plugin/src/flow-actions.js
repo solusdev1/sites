@@ -119,24 +119,33 @@
   }
 
   const inEditor = doc => /\/(edit|scene)\//.test(doc.defaultView.location.pathname);
-  const videoTiles = doc => Array.from(doc.querySelectorAll('main button')).filter(b => text(b).startsWith('play_circle'));
+  // Grid do projeto (Flow real, 2026-10-18): flow-grid-tile-container[aria-label = nome] contendo
+  // flow-video-tile / flow-image-tile / flow-scene-tile. Mais recente primeiro. O clique que abre o editor
+  // é no .container do tile (o div[role=button] com o nome é só o rodapé).
+  const KIND = {video:'flow-video-tile', imagem:'flow-image-tile'};
+  const mediaTiles = (doc, kind) => Array.from(doc.querySelectorAll('main flow-grid-tile-container[aria-label]')).filter(t => t.querySelector(KIND[kind]));
+  const failures = doc => (text(doc.querySelector('main') || doc.body).match(/\bFalha\b/g) || []).length;
 
-  // Abre o vídeo mais recente do projeto (o grid lista do mais novo para o mais antigo).
-  async function openLatestVideo(doc = document) {
+  // Abre o vídeo pelo nome que o Flow deu a ele (gravado quando foi gerado); sem nome, o mais recente.
+  async function openVideo(doc = document, name = '') {
     if (inEditor(doc)) return;
-    const tile = await waitFor(() => videoTiles(doc)[0], 'vídeo no projeto (gere o vídeo anterior antes)');
-    tile.click();
+    const tile = await waitFor(() => (name && mediaTiles(doc, 'video').find(t => t.getAttribute('aria-label') === name)) || mediaTiles(doc, 'video')[0], 'vídeo no projeto (gere o vídeo anterior antes)');
+    (tile.querySelector(`${KIND.video} .container`) || tile.querySelector(KIND.video)).click();
     await waitFor(() => inEditor(doc) && doc.querySelector('canvas'), 'editor do vídeo');
   }
 
   // No editor, pula para o fim do clipe e lê o frame direto do canvas do player (sem baixar nada).
   async function captureLastFrame(doc = document, name = 'ultimo_frame.jpg') {
     const end = await waitFor(() => doc.querySelector('[aria-label="Pular para o próximo clipe"]'), 'controles do player');
-    end.click();
-    await waitFor(() => {
-      const times = text(doc.body).match(/\d{2}:\d{2}:\d{2}/g) || [];
-      return times.length >= 2 && times[0] === times[1] && times[0] !== '00:00:00';
-    }, 'fim do vídeo no player');
+    const times = () => text(doc.body).match(/\d{2}:\d{2}:\d{2}/g) || [];
+    // Antes de carregar, o player mostra 00:00:00 / 00:00:00 e o "pular" não faz nada (visto no Flow real).
+    await waitFor(() => times().length >= 2 && times()[1] !== '00:00:00', 'duração do vídeo no player', 20000);
+    const deadline = Date.now() + 10000;
+    while (!(times()[0] === times()[1])) {
+      if (Date.now() > deadline) throw new Error('Flow: fim do vídeo no player não apareceu.');
+      end.click();
+      await sleep(Math.max(delay, 300));
+    }
     await sleep(Math.max(delay, 500));  // o canvas redesenha depois do seek
     const canvas = await waitFor(() => doc.querySelector('canvas'), 'player do vídeo');
     const blob = await new Promise((resolve, reject) => {
@@ -157,12 +166,14 @@
   // usuário: a extensão nunca clica em "Concordo", só espera ele aceitar (onRights avisa o popup).
   async function uploadAndInclude(opener, tabLabel, file, doc, win, {rightsTimeout = 180000, uploadTimeout = 180000, onRights} = {}) {
     await openPicker(opener, tabLabel, doc);
+    const uploaded = () => options(doc).find(o => sameName(o, file.name));
+    await sleep(Math.max(delay, 300));  // a lista carrega logo depois de abrir
+    if (uploaded()) return chooseOption(uploaded(), doc);  // já está no projeto: reaproveita, sem reenviar
     const upload = await waitFor(() => Array.from(overlay(doc).querySelectorAll('button')).find(b => text(b).endsWith('Enviar mídia')), 'botão "Enviar mídia"');
     win.postMessage({source:'flow-copiloto', type:'arm-upload', file}, win.location.origin);
     await sleep(Math.max(delay, 100));
     upload.click();
     const rights = () => Array.from(overlay(doc).querySelectorAll('[role="dialog"], mat-dialog-container')).find(d => text(d).includes('Direitos de uso'));
-    const uploaded = () => options(doc).find(o => sameName(o, file.name));
     await waitFor(() => rights() || uploaded() || options(doc).some(o => text(o).startsWith('Enviando')), `envio de ${file.name}`, 20000);
     if (rights() && !uploaded()) {
       onRights?.();
@@ -190,9 +201,17 @@
     await includeRecent(addButton(doc), 'Imagens', doc, name);
   }
 
-  // Confirma que o vídeo nasceu: o Flow às vezes some com a geração sem avisar (vimos 503 no status).
-  async function waitNewVideo(before, doc = document, timeout = 420000) {
-    await waitFor(() => !generating(doc) && videoTiles(doc).length > before, 'novo vídeo no projeto (o Flow pode ter falhado sem aviso)', timeout);
+  // O clique em gerar é sempre do usuário: o Flow ignora cliques sintéticos no botão (isTrusted). Aqui só
+  // acompanhamos: um item novo do tipo esperado aparece (devolve o nome) ou surge um card "Falha" (erro).
+  function mediaCount(doc, kind) { return mediaTiles(doc, kind).length; }
+
+  async function waitNewMedia(kind, before, doc = document, timeout = 900000, failuresBefore = failures(doc)) {
+    const tile = await waitFor(() => {
+      if (failures(doc) > failuresBefore) throw new Error('Flow: a geração falhou (veja o card "Falha" no projeto).');
+      const tiles = mediaTiles(doc, kind);
+      return !generating(doc) && tiles.length > before ? tiles[0] : null;
+    }, 'resultado da geração no projeto', timeout);
+    return tile.getAttribute('aria-label');
   }
 
   // Custo atual mostrado pelo Flow (muda com os elementos: vídeo de referência encarece a geração).
@@ -211,19 +230,8 @@
 
   const generating = doc => /\b\d{1,3}%/.test(text(doc.querySelector('main') || doc.body));
 
-  async function generate(doc = document, {wait = false, timeout = 180000} = {}) {
-    const button = await waitFor(() => {
-      const found = doc.querySelector(GENERATE);
-      return found && !found.disabled ? found : null;
-    }, 'botão de gerar habilitado');
-    button.click();
-    if (!wait) return;
-    await waitFor(() => generating(doc), 'início da geração', 15000);
-    await waitFor(() => !generating(doc), 'fim da geração', timeout);
-  }
-
-  global.FlowActions = {configure, setStartFrame, attachReference, generate, credits, generating,
-    openLatestVideo, captureLastFrame, backToProject, uploadStartFrame, addVideoElement, addImageElement, readCredits, waitNewVideo, videoTiles: doc => videoTiles(doc).length,
+  global.FlowActions = {configure, setStartFrame, attachReference, credits, generating, failures,
+    openVideo, captureLastFrame, backToProject, uploadStartFrame, addVideoElement, addImageElement, readCredits, mediaCount, waitNewMedia,
     setDelay(ms) { delay = ms; }};
   if (typeof module !== 'undefined' && module.exports) module.exports = global.FlowActions;
 })(globalThis);
