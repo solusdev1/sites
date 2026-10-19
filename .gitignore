@@ -2,6 +2,7 @@
 __pycache__/
 .pytest_cache/
 saida/
+qa/
 *.egg-info/
 .overclock-app/
 .codex/

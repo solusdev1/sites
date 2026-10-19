@@ -19,7 +19,7 @@ Não é necessário instalar dependências para usar a extensão. `npm.cmd insta
 5. Revise o vídeo e clique em **Aprovar** ou **Rejeitar** (ou use **Importar veredito**, abaixo). A fila só avança para o item seguinte depois que o atual é aprovado. Rejeitado mostra **Regenerar este**, que reusa o mesmo prompt (ou o `prompt_correcao` da QA) e o mesmo frame inicial. É possível voltar um item a `pendente` ou descartá-lo.
 6. Use **Exportar estado** para baixar `fila_estado.json`. Esse arquivo pode ser reimportado como fila após limpar o estado, inclusive com os status e a persona. **Limpar fila** apaga apenas os dados locais desta extensão.
 
-O estado fica em `chrome.storage.local`. A extensão não faz requisições externas, não envia telemetria e não coleta cookies. As permissões são `storage`, `activeTab` e `downloads` (só para salvar o vídeo gerado e o último frame em Downloads/veo3); o content script só roda nas páginas de Flow e Gemini definidas no manifest.
+O estado fica em `chrome.storage.local`. A extensão não faz requisições externas, não envia telemetria e não coleta cookies. As permissões são `storage`, `activeTab` e `downloads` (só para salvar o vídeo gerado e o último frame em Downloads/veo3), mais acesso ao servidor local em `http://127.0.0.1:8765/*`; o content script só roda nas páginas de Flow e Gemini definidas no manifest.
 
 ## Modo sequência (imagem → vídeo → estender)
 
@@ -41,6 +41,8 @@ Quando o vídeo novo aparece no projeto, a extensão:
 Se algum dos dois falhar, o popup avisa, o erro fica no item (`download_erro`/`frame_erro`) e o botão **Baixar vídeo atual** refaz os dois. O próximo vídeo da fila, depois que o atual for aprovado, recebe esse PNG no **Início**. **Usar outro frame** troca o frame de continuação por um arquivo que você escolhe.
 
 ### Veredito da QA
+
+Para aplicar vereditos sem escolher arquivos, inicie no projeto `python -m veo_pipeline servir --fila fila.json` antes de gerar os vídeos. O popup mostra **Servidor local: conectado** e consulta `Downloads/veo3/<persona_id>/<item_id>.verdict.json` a cada 5 segundos enquanto estiver aberto. O veredito de um item `gerado` é aplicado automaticamente. O servidor extrai o MP4 para `Downloads/veo3/<persona_id>/qa/<item_id>/` depois que o download estabiliza; a inspeção visual e a gravação do veredito ainda são feitas pelo agente de QA. Se mostrar **desconectado**, use **Importar veredito**. A extensão usa apenas `http://127.0.0.1:8765`; para outra porta, ajuste a permissão do manifest e a URL em `src/popup.js`.
 
 **Importar veredito** lê `<item_id>.verdict.json`:
 

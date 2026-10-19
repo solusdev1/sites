@@ -8,7 +8,7 @@ const manifest = JSON.parse(readFileSync(resolve(root, 'manifest.json'), 'utf8')
 assert.equal(manifest.manifest_version, 3);
 assert.equal(manifest.action.default_popup, 'popup.html');
 assert.deepEqual(manifest.permissions.sort(), ['activeTab','downloads','storage']);  // downloads: MP4 e último frame
-assert.ok(!manifest.host_permissions || manifest.host_permissions.length === 0);
+assert.deepEqual(manifest.host_permissions, ['http://127.0.0.1:8765/*']);
 const files = [manifest.action.default_popup, manifest.background.service_worker, ...manifest.content_scripts.flatMap(({js}) => js)];
 const popup = readFileSync(resolve(root, manifest.action.default_popup), 'utf8');
 for (const match of popup.matchAll(/(?:href|src)="([^"]+)"/g)) files.push(match[1]);

@@ -9,11 +9,13 @@ const strip = source => source.replace(/^import .*$/gm, '').replace(/^export /gm
 const bundle = `(async () => {\n${strip(read('src/queue.js'))}\n${strip(read('src/prompt.js'))}\n${strip(read('src/popup.js'))}\n})().then(() => { window.__ready = true; }, e => { window.__error = e; });`;
 const maya = JSON.parse(read('../data/exemplos/fila.maya.json'));
 
-async function popup(state, {tabUrl = 'https://flow.google.com/project/x', response = {ok:true, next:'pronto'}} = {}) {
+async function popup(state, {tabUrl = 'https://flow.google.com/project/x', response = {ok:true, next:'pronto'}, fetchMock = async () => { throw new Error('offline'); }} = {}) {
   const html = read('popup.html').replace(/<script[^>]*><\/script>/, '').replace(/<link[^>]*>/, '');
   const {window} = new JSDOM(html, {url:'https://ext.test/popup.html', runScripts:'outside-only'});
   const store = {veoFlowState: structuredClone(state)};
   const sent = [];
+  window.fetch = fetchMock;
+  window.setInterval = () => 0;
   window.chrome = {
     storage: {local: {get: async key => ({[key]: store[key]}), set: async obj => Object.assign(store, structuredClone(obj))}, onChanged: {addListener() {}}},
     runtime: {onMessage: {addListener() {}}},
@@ -114,4 +116,34 @@ test('popup mostra onde o MP4 foi salvo e um aviso claro quando caiu fora da pas
   assert.match(first, /MP4 salvo em: C:\\Downloads\\058446ca\.mp4/);
   assert.match(first, /⚠ O Chrome salvou fora de Downloads\/veo3/);
   assert.match(second, /⚠ MP4 NÃO baixado: SERVER_FORBIDDEN/);
+});
+
+test('servidor conectado aplica automaticamente veredito ao item gerado', async () => {
+  const state = fresh();
+  state.itens[0] = {...state.itens[0], status:'gerado'};
+  const verdict = {item_id:ids[0], verdict:'aprovado', motivos:[], frame_continuacao:null, corte_sugerido:null, prompt_correcao:null};
+  const calls = [];
+  const fetchMock = async url => {
+    calls.push(url);
+    const body = url.endsWith('/saude') ? {ok:true} : url.includes('/vereditos?') ? [{item_id:ids[0], mtime:123}] : verdict;
+    return {ok:true, json:async () => body};
+  };
+  const p = await popup(state, {fetchMock});
+  for (let i = 0; i < 30 && p.store.veoFlowState.itens[0].status !== 'aprovado'; i++) await new Promise(r => setTimeout(r, 5));
+  assert.equal(p.$('#server-status').textContent, 'Servidor local: conectado');
+  assert.equal(p.store.veoFlowState.itens[0].status, 'aprovado');
+  assert.equal(p.store.veoFlowState.itens[0].qa_verdict_mtime, 123);
+  assert.equal(calls.length, 3);
+});
+
+test('servidor desconectado mantém importação manual como fallback', async () => {
+  const state = fresh();
+  state.itens[0] = {...state.itens[0], status:'gerado'};
+  const p = await popup(state);
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal(p.$('#server-status').textContent, 'Servidor local: desconectado');
+  let opened = false;
+  p.$('#verdict-file').click = () => { opened = true; };
+  await p.click('#import-verdict-button');
+  assert.equal(opened, true);
 });

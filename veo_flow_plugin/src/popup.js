@@ -5,6 +5,52 @@ const STORAGE_KEY = 'veoFlowState';
 const $ = selector => document.querySelector(selector);
 let state = emptyState();
 let busy = false;
+let polling = false;
+const QA_SERVER = 'http://127.0.0.1:8765';
+
+function connection(connected) {
+  const element = $('#server-status');
+  element.dataset.connected = String(connected);
+  element.textContent = `Servidor local: ${connected ? 'conectado' : 'desconectado'}`;
+}
+
+async function serverJson(path) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2000);
+  try {
+    const response = await fetch(`${QA_SERVER}${path}`, {signal:controller.signal});
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally { clearTimeout(timer); }
+}
+
+async function pollVerdicts() {
+  if (polling) return;
+  polling = true;
+  try {
+    await serverJson('/saude');
+    connection(true);
+    const stored = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY];
+    if (stored?.version === 1 && Array.isArray(stored.itens)) state = stored;
+    if (!state.persona_id) return;
+    const entries = await serverJson(`/vereditos?persona=${encodeURIComponent(state.persona_id)}`);
+    if (!Array.isArray(entries)) throw new Error('lista de vereditos inválida');
+    for (const entry of entries) {
+      const item = state.itens.find(other => other.id === entry.item_id);
+      if (!item || item.status !== 'gerado' || item.qa_verdict_mtime === entry.mtime) continue;
+      try {
+        const data = await serverJson(`/veredito/${encodeURIComponent(state.persona_id)}/${encodeURIComponent(entry.item_id)}`);
+        const verdict = parseVerdict(JSON.stringify(data));
+        if (verdict.item_id !== entry.item_id) throw new Error('ID do veredito diferente do arquivo');
+        await save(updateItem(applyVerdict(state, verdict), item.id, {qa_verdict_mtime:entry.mtime}));
+        const applied = state.itens.find(other => other.id === item.id);
+        const extra = needsChosenFrame(applied) ? ' Escolha o frame indicado para continuar.' : '';
+        feedback(`Veredito aplicado automaticamente: ${item.hook || item.id} ${verdict.verdict}.${extra}`, verdict.verdict === 'aprovado' ? 'success' : 'error');
+      } catch (error) { feedback(`QA ${entry.item_id}: ${error.message}`, 'error'); }
+    }
+  } catch { connection(false); }
+  finally { polling = false; }
+}
 
 function feedback(message, kind = 'success') {
   const element = $('#feedback');
@@ -134,6 +180,7 @@ async function importQueue(file) {
     const result = mergeQueue(state, queue, embeddedPersona);
     await save(result.state);
     feedback(`${result.added} novo(s) item(ns) importado(s); ${result.skipped} duplicado(s) ignorado(s).`);
+    void pollVerdicts();
   } catch (error) { feedback(error.message, 'error'); }
   $('#queue-file').value = '';
 }
@@ -343,6 +390,8 @@ try {
   const stored = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY];
   if (stored?.version === 1 && Array.isArray(stored.itens)) state = stored;
   render();
+  void pollVerdicts();
+  setInterval(pollVerdicts, 5000);
 } catch (error) {
   render();
   feedback(`Não foi possível ler o armazenamento local: ${error.message}`, 'error');

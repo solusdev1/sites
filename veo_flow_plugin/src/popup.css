@@ -26,6 +26,8 @@ h1 { margin: 6px 0 4px; font-size: 27px; line-height: 1.15; letter-spacing: -.03
 .queue-meta, .section-heading, .footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .queue-meta { margin-bottom: 12px; font-weight: 600; }
 .count { color: var(--secondary); font-size: 13px; font-variant-numeric: tabular-nums; }
+.server-status { margin: -4px 0 12px; color: var(--danger); font-size: 13px; }
+.server-status[data-connected="true"] { color: var(--success); }
 .primary-button, .secondary-button { min-height: 44px; border-radius: 7px; font-weight: 650; }
 .primary-button { width: 100%; border: 1px solid transparent; background: var(--accent); color: var(--accent-ink); }
 .primary-button:hover:not(:disabled) { background: #f2c783; }

@@ -1,4 +1,4 @@
-"""CLI: python -m veo_pipeline <roteiro|sequencia|genjutsu|veo|pos|qa|montar|validar>."""
+"""CLI: python -m veo_pipeline <roteiro|sequencia|genjutsu|veo|pos|qa|montar|validar|servir>."""
 from __future__ import annotations
 
 import argparse
@@ -6,7 +6,7 @@ import json
 import logging
 import sys
 
-from . import auto_veo, genjutsu, pos_producao, qa, roteiro
+from . import auto_veo, genjutsu, pos_producao, qa, roteiro, servidor
 from .config import Config, load_dotenv, setup_logging
 from .fila import load_fila, save_fila
 from .persona import load_persona
@@ -69,6 +69,11 @@ def build_parser() -> argparse.ArgumentParser:
     qa_api.add_argument("--api", action="store_true", required=True)
     qa_api.add_argument("--checklist", required=True)
 
+    local = sub.add_parser("servir", help="servidor local de QA para a extensão")
+    local.add_argument("--porta", type=int, default=8765)
+    local.add_argument("--pasta", default="~/Downloads/veo3")
+    local.add_argument("--fila", default=None, help="fila JSON para extração automática")
+
     montar = sub.add_parser("montar", help="concatena somente vídeos aprovados em ordem")
     montar.add_argument("--fila", required=True)
     montar.add_argument("--dir", required=True)
@@ -120,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(qa.analyze_api(args.checklist))
         elif args.cmd == "montar":
             print(json.dumps(qa.assemble(args.fila, args.dir, args.out), ensure_ascii=False))
+        elif args.cmd == "servir":
+            servidor.serve(args.pasta, args.porta, args.fila)
         elif args.cmd == "validar":
             validate(args.tipo, load_json(args.arquivo))
             print("ok")

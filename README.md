@@ -11,12 +11,17 @@ python -m veo_pipeline veo      --fila fila.json --out-dir saida/ [--dry-run]
 python -m veo_pipeline pos      --pasta Downloads/lote --fila fila.json [--data 2026-10-18]
 python -m veo_pipeline qa extrair --video clips/ID.mp4 --item-id ID --fila fila.json --out-dir clips/qa/ID/
 python -m veo_pipeline qa validar --verdict clips/qa/ID/ID.verdict.json
+python -m veo_pipeline servir --fila fila.json [--porta 8765] [--pasta ~/Downloads/veo3]
 python -m veo_pipeline montar --fila fila.json --dir clips --out final.mp4
 python -m veo_pipeline validar  persona|fila arquivo.json
 python -m pytest -q
 ```
 
 Cada vídeo deve passar por QA visual antes de gerar o próximo. A skill [`veo-video-qa`](skills/veo-video-qa/SKILL.md) orienta a análise pelo próprio agente, sem chave paga; veja o [fluxo completo](docs/qa-fluxo.md). A extração requer ffmpeg no PATH (ou `pip install -e .[ffmpeg]`) e Pillow. A análise opcional por API usa `pip install -e .[vision]` e `qa analisar --api --checklist clips/qa/ID/checklist.json`.
+
+### QA automática com o plugin
+
+Execute `python -m veo_pipeline servir --fila fila.json` em um terminal enquanto usa a extensão. O servidor escuta apenas `127.0.0.1:8765` e observa `~/Downloads/veo3/<persona_id>/`. Quando o MP4 termina de ser salvo, extrai os frames em `qa/<ID>/` ao lado do vídeo e registra o caminho pronto para análise. O agente ainda precisa inspecionar as imagens e gravar `<ID>.verdict.json` na pasta da persona; a extensão o aplica automaticamente a um item `gerado` quando o popup está aberto. Se a fila estiver em outro local, passe seu caminho a `--fila`. Sem `--fila`, o servidor procura `fila*.json` na pasta atual e filas JSON na pasta de downloads. A porta da extensão é fixa em 8765; outra porta exige alterar a URL no código da extensão. O botão **Importar veredito** continua disponível quando o servidor estiver desligado.
 
 ## Contrato com o plugin Chrome
 `schemas/persona.schema.json` e `schemas/fila.schema.json`. O `prompt_final` (bloco_fixo + look + cena + câmera + fala + estilo)
