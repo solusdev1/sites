@@ -23,6 +23,8 @@ Cada vídeo deve passar por QA visual antes de gerar o próximo. A skill [`veo-v
 
 Execute `python -m veo_pipeline servir --fila fila.json` em um terminal enquanto usa a extensão. O servidor escuta apenas `127.0.0.1:8765` e observa `~/Downloads/veo3/<persona_id>/`. Quando o MP4 termina de ser salvo, extrai os frames em `qa/<ID>/` ao lado do vídeo e registra o caminho pronto para análise. O agente ainda precisa inspecionar as imagens e gravar `<ID>.verdict.json` na pasta da persona; a extensão o aplica automaticamente a um item `gerado` quando o popup está aberto. Se a fila estiver em outro local, passe seu caminho a `--fila`. Sem `--fila`, o servidor procura `fila*.json` na pasta atual e filas JSON na pasta de downloads. A porta da extensão é fixa em 8765; outra porta exige alterar a URL no código da extensão. O botão **Importar veredito** continua disponível quando o servidor estiver desligado.
 
+
+Ou dê dois cliques em `servir.bat` na raiz do projeto (aceita os mesmos argumentos, como `--porta` e `--pasta`).
 ## Contrato com o plugin Chrome
 `schemas/persona.schema.json` e `schemas/fila.schema.json`. O `prompt_final` (bloco_fixo + look + cena + câmera + fala + estilo)
 vem pronto do Python; o plugin só injeta. Exemplos válidos: `data/exemplos/fila.exemplo.json`, `fila_genjutsu.exemplo.json`.
