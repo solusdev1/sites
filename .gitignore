@@ -3,3 +3,10 @@ __pycache__/
 .pytest_cache/
 saida/
 *.egg-info/
+.overclock-app/
+.codex/
+node_modules/
+veo_flow_plugin/test/evidence/
+*.mp4
+*.mov
+*.db
