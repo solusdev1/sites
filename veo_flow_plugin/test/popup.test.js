@@ -104,3 +104,14 @@ test('importar veredito aplica ao item e "Baixar vídeo atual" pede o COLLECT ao
   assert.deepEqual({...p.sent.at(-1)}, {type:'COLLECT', item_id:ids[0]});
   assert.match(p.$('#feedback').textContent, /a\.mp4/);
 });
+
+test('popup mostra onde o MP4 foi salvo e um aviso claro quando caiu fora da pasta ou falhou', async () => {
+  const state = fresh();
+  state.itens[0] = {...state.itens[0], status:'gerado', flow_midia:'Novo video', video_path:String.raw`C:\Downloads\058446ca.mp4`, download_aviso:'O Chrome salvou fora de Downloads/veo3/maya/x.mp4'};
+  state.itens[1] = {...state.itens[1], status:'gerado', flow_midia:'Outro', download_erro:'SERVER_FORBIDDEN'};
+  const p = await popup(state);
+  const [first, second] = [...p.window.document.querySelectorAll('.queue-item')].map(li => li.textContent);
+  assert.match(first, /MP4 salvo em: C:\\Downloads\\058446ca\.mp4/);
+  assert.match(first, /⚠ O Chrome salvou fora de Downloads\/veo3/);
+  assert.match(second, /⚠ MP4 NÃO baixado: SERVER_FORBIDDEN/);
+});

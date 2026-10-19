@@ -78,8 +78,9 @@ function renderItem(item, index) {
 // Caminhos gravados no estado: o que já foi baixado e o frame que continua a sequência.
 function files(item) {
   const lines = [];
-  if (item.video_path) lines.push(`Vídeo: ${item.video_path}`);
-  else if (item.download_erro) lines.push(`Vídeo não baixado: ${item.download_erro}`);
+  if (item.video_path) lines.push(`MP4 salvo em: ${item.video_path}`);
+  if (item.download_aviso) lines.push(`⚠ ${item.download_aviso}`);
+  else if (!item.video_path && item.download_erro) lines.push(`⚠ MP4 NÃO baixado: ${item.download_erro}. Use "Baixar vídeo atual".`);
   if (item.frame_indicado) lines.push(`Frame de continuação (indicado): ${item.frame_indicado}`);
   else if (item.ultimo_frame) lines.push(`Último frame: ${item.ultimo_frame}`);
   else if (item.frame_erro) lines.push(`Último frame não salvo: ${item.frame_erro}`);
@@ -257,7 +258,8 @@ async function collectCurrent(item) {
     const result = await send(tab, {type:'COLLECT', item_id:item.id});
     await reload();
     if (!result?.ok) throw new Error(result?.error || [result?.download_erro, result?.frame_erro].filter(Boolean).join('; ') || 'O Flow não confirmou o download.');
-    feedback(`Salvo: ${result.video_path} e ${result.ultimo_frame}.`);
+    if (result.download_aviso) feedback(`MP4 salvo em ${result.video_path}, mas ${result.download_aviso}`, 'error');
+    else feedback(`MP4 salvo em: ${result.video_path}; último frame: ${result.ultimo_frame}.`);
   } catch (error) { feedback(error.message, 'error'); }
   finally { busy = false; render(); }
 }

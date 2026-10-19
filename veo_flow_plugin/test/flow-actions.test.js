@@ -430,6 +430,22 @@ test('download que falha não impede o último frame, avisa e o "Baixar vídeo a
   assert.equal(f.store.veoFlowState.itens[0].video_path, 'veo3/sem_persona/a.mp4');
 });
 
+test('download salvo fora da pasta: grava o caminho real e o aviso no item e avisa o usuário', async () => {
+  const f = flow({videos: 1, rights:false});
+  const notices = [];
+  f.window.chrome.runtime = {sendMessage: async m => m.type === 'DOWNLOAD'
+    ? {ok:true, path:`Downloads/x${m.filename.slice(-4)}`, aviso:'salvo fora de Downloads/veo3'}
+    : notices.push(m.text)};
+  await f.window.FlowContent.runStep(video, 'p', f.doc, f.window);
+  userClicksGenerate(f);
+  const result = await f.window.FlowContent.lastCollect;
+  const item = f.store.veoFlowState.itens[0];
+  assert.equal(item.video_path, 'Downloads/x.mp4');
+  assert.equal(item.download_aviso, 'salvo fora de Downloads/veo3');
+  assert.equal(result.ok, true);
+  assert.match(notices.at(-1), /salvo fora de Downloads\/veo3/);
+});
+
 test('fila sem flow (padrão Vídeo → Frames): não força a duração do item', async () => {
   const f = flow({rights:false});
   const r = await f.window.FlowContent.runStep({id:'a', tipo:'veo', duracao_s:6, flow:{modo:'video', proporcao:'9:16', submodo:'frames'}, flow_padrao:true, frame_inicial:''}, 'p', f.doc, f.window);

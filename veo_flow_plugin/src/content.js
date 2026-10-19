@@ -72,7 +72,7 @@
     try { result = await global.chrome.runtime.sendMessage({type:'DOWNLOAD', url, filename}); }
     catch (error) { throw new Error(`download indisponível (${error.message}); recarregue a extensão e a aba`); }
     if (!result?.ok) throw new Error(result?.error || 'o Chrome não confirmou o download');
-    return result.path;
+    return result;  // {path, aviso?}: aviso quando o Chrome salvou fora de Downloads/veo3/<persona>/
   }
 
   const folder = (state, item) => `veo3/${String(state?.persona_id || 'sem_persona').replace(/[^\w.-]+/g, '_')}/${item.id}`;
@@ -82,9 +82,12 @@
   async function collect(item, name, doc = document) {
     const actions = global.FlowActions;
     const base = folder(await readState(), item);
-    const fields = {}, errors = [];
+    const fields = {}, errors = [], avisos = [];
     try {
-      fields.video_path = await download(await actions.videoSource(doc, name), `${base}.mp4`);
+      const video = await download(await actions.videoSource(doc, name), `${base}.mp4`);
+      fields.video_path = video.path;
+      fields.download_aviso = video.aviso || null;
+      if (video.aviso) avisos.push(video.aviso);
       fields.download_erro = null;
     } catch (error) { fields.download_erro = error.message; errors.push(`vídeo: ${error.message}`); }
     try {
@@ -93,7 +96,9 @@
       await actions.backToProject(doc);
       const data = await dataUrl(file);
       await saveFrame(item.id, {name:file.name, data});
-      fields.ultimo_frame = await download(data, `${base}_last.png`);
+      const png = await download(data, `${base}_last.png`);
+      fields.ultimo_frame = png.path;
+      if (png.aviso) avisos.push(png.aviso);
       fields.frame_erro = null;
     } catch (error) {
       fields.frame_erro = error.message;
@@ -102,6 +107,7 @@
     }
     await saveFields(item.id, fields);
     if (errors.length) notify(`Não consegui tudo de "${item.hook || item.id}" (${errors.join('; ')}). Use "Baixar vídeo atual" no popup.`);
+    else if (avisos.length) notify(`"${item.hook || item.id}" gerado, mas ${avisos.join(' ')}`);
     else notify(`"${item.hook || item.id}" gerado: vídeo e último frame salvos em Downloads/${base}. Revise e aprove ou rejeite.`, 'success');
     return {ok:!errors.length, ...fields};
   }
