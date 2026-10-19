@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "id": "maya",
+  "nome": "Maya",
+  "arquetipo": "relatable_cidade_grande",
+  "bloco_fixo": "Maya, mulher brasileira de 22 anos, pele parda, cabelo preto curto e despenteado estilo tomboyish, olhos marrom claro com expressão divertida, estatura mediana, corpo atlético, movimento casual e confortável",
+  "looks": [
+    {"id": "look1", "descricao": "camiseta oversized cinza com print gráfico, calça cargo cáqui e tênis branco"},
+    {"id": "look2", "descricao": "regata preta ajustada, bermuda jean desgastada e chinelo"},
+    {"id": "look3", "descricao": "moletom bege grande, calça preta cintada e botinha preta"}
+  ],
+  "negative_prompt": "different face, changing appearance, morphing, physical contact, embrace, fighting, occlusion",
+  "estilo": "vídeo vertical 9:16 estilo celular, iluminação ambiente natural ou neon casual, estética de creator descontraído fazendo commentary, áudio com fala em português do Brasil casual e direto",
+  "voz": {"provider": "elevenlabs", "voice_id": ""},
+  "character_sheet": {"close": "", "tres_quartos": "", "corpo": ""}
+}
