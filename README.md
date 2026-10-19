@@ -9,9 +9,14 @@ python -m veo_pipeline sequencia --persona data/personas/luna.json --nicho "vida
 python -m veo_pipeline genjutsu --modo motion|swap_produto|restyle --video-fonte clip.mp4 --imagem-ancora luna.png --qtd 3 --out fila_genjutsu.json [--preparar-fonte]
 python -m veo_pipeline veo      --fila fila.json --out-dir saida/ [--dry-run]
 python -m veo_pipeline pos      --pasta Downloads/lote --fila fila.json [--data 2026-10-18]
+python -m veo_pipeline qa extrair --video clips/ID.mp4 --item-id ID --fila fila.json --out-dir clips/qa/ID/
+python -m veo_pipeline qa validar --verdict clips/qa/ID/ID.verdict.json
+python -m veo_pipeline montar --fila fila.json --dir clips --out final.mp4
 python -m veo_pipeline validar  persona|fila arquivo.json
 python -m pytest -q
 ```
+
+Cada vídeo deve passar por QA visual antes de gerar o próximo. A skill [`veo-video-qa`](skills/veo-video-qa/SKILL.md) orienta a análise pelo próprio agente, sem chave paga; veja o [fluxo completo](docs/qa-fluxo.md). A extração requer ffmpeg no PATH (ou `pip install -e .[ffmpeg]`) e Pillow. A análise opcional por API usa `pip install -e .[vision]` e `qa analisar --api --checklist clips/qa/ID/checklist.json`.
 
 ## Contrato com o plugin Chrome
 `schemas/persona.schema.json` e `schemas/fila.schema.json`. O `prompt_final` (bloco_fixo + look + cena + câmera + fala + estilo)

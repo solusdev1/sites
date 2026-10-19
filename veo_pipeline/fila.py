@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,6 +12,15 @@ from .schema import dump_json, load_json, validate
 log = logging.getLogger(__name__)
 HASHTAGS_BASE = ["#IA", "#conteudogeradoporia"]
 DISCLOSURE = "Conteúdo gerado por IA"
+ANTI_DUPLICACAO = "duplicate objects, extra suitcase, cloned items"
+
+
+def explicitar_quantidades(cena: str) -> str:
+    """Mantém a contagem de objetos durante ações de pegar/puxar/abrir."""
+    objetos = "mala|bolsa|carta|celular|caixa|garrafa|copo|chave|foto"
+    cena = re.sub(rf"\b(?:uma|um)\s+({objetos})\b", lambda m: f"exatamente UMA {m.group(1)}", cena,
+                  flags=re.IGNORECASE)
+    return cena
 
 
 def build_item(persona: dict, *, tipo: str, modo: str | None, look_id: str | None, cena: str, hook: str,
@@ -19,9 +29,11 @@ def build_item(persona: dict, *, tipo: str, modo: str | None, look_id: str | Non
                negative_extra: str = "", prompt_final: str = "", flow: dict | None = None,
                frame_inicial: str = "", sequencia_id: str = "", ordem: int | None = None) -> dict:
     look = get_look(persona, look_id)
+    cena = explicitar_quantidades(cena)
     neg = persona["negative_prompt"]
     if negative_extra:
         neg = f"{neg}, {negative_extra}"
+    neg = f"{neg}, {ANTI_DUPLICACAO}"
     tags = list(dict.fromkeys((hashtags or []) + HASHTAGS_BASE))
     item = {
         "id": item_id(persona["id"], tipo, modo, look["id"], cena, hook, fala, camera, duracao_s, video_fonte,
@@ -34,7 +46,7 @@ def build_item(persona: dict, *, tipo: str, modo: str | None, look_id: str | Non
         "fala": fala,
         "camera": camera,
         "duracao_s": duracao_s,
-        "prompt_final": prompt_final or montar_prompt(persona, look, cena, camera, fala, extra_prompt),
+        "prompt_final": explicitar_quantidades(prompt_final) if prompt_final else montar_prompt(persona, look, cena, camera, fala, extra_prompt),
         "negative_prompt": neg,
         "anexos": {"imagem_ancora": imagem_ancora, "video_fonte": video_fonte},
         "legenda": legenda or hook,

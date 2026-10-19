@@ -1,4 +1,4 @@
-"""CLI: python -m veo_pipeline <roteiro|sequencia|genjutsu|veo|pos|validar>."""
+"""CLI: python -m veo_pipeline <roteiro|sequencia|genjutsu|veo|pos|qa|montar|validar>."""
 from __future__ import annotations
 
 import argparse
@@ -6,7 +6,7 @@ import json
 import logging
 import sys
 
-from . import auto_veo, genjutsu, pos_producao, roteiro
+from . import auto_veo, genjutsu, pos_producao, qa, roteiro
 from .config import Config, load_dotenv, setup_logging
 from .fila import load_fila, save_fila
 from .persona import load_persona
@@ -55,6 +55,25 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--fila", required=True)
     pp.add_argument("--data", default=None, help="AAAA-MM-DD (default: hoje)")
 
+    q = sub.add_parser("qa", help="extrai evidências, valida ou analisa vídeo")
+    qsub = q.add_subparsers(dest="qa_cmd", required=True)
+    qe = qsub.add_parser("extrair")
+    qe.add_argument("--video", required=True)
+    qe.add_argument("--item-id", required=True)
+    qe.add_argument("--fila", required=True)
+    qe.add_argument("--out-dir", required=True)
+    qe.add_argument("--fps", type=float, default=2.0)
+    qv = qsub.add_parser("validar")
+    qv.add_argument("--verdict", required=True)
+    qa_api = qsub.add_parser("analisar", help="analisa os frames usando API de visão opcional")
+    qa_api.add_argument("--api", action="store_true", required=True)
+    qa_api.add_argument("--checklist", required=True)
+
+    montar = sub.add_parser("montar", help="concatena somente vídeos aprovados em ordem")
+    montar.add_argument("--fila", required=True)
+    montar.add_argument("--dir", required=True)
+    montar.add_argument("--out", required=True)
+
     val = sub.add_parser("validar", help="valida persona/fila contra o schema")
     val.add_argument("tipo", choices=["persona", "fila"])
     val.add_argument("arquivo")
@@ -90,10 +109,21 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "pos":
             res = pos_producao.processar(args.pasta, load_fila(args.fila), args.data)
             print(json.dumps(res, ensure_ascii=False, indent=2))
+        elif args.cmd == "qa":
+            if args.qa_cmd == "extrair":
+                res = qa.extract(args.video, args.item_id, args.fila, args.out_dir, args.fps)
+                print(f"{len(res['frames'])} frames -> {args.out_dir}")
+            elif args.qa_cmd == "validar":
+                qa.validate_verdict(args.verdict)
+                print("ok")
+            else:
+                print(qa.analyze_api(args.checklist))
+        elif args.cmd == "montar":
+            print(json.dumps(qa.assemble(args.fila, args.dir, args.out), ensure_ascii=False))
         elif args.cmd == "validar":
             validate(args.tipo, load_json(args.arquivo))
             print("ok")
-    except (ValidationError, auto_veo.VeoError, FileNotFoundError, ValueError) as exc:
+    except (ValidationError, auto_veo.VeoError, FileNotFoundError, ValueError, ImportError) as exc:
         print(f"erro: {exc}", file=sys.stderr)
         return 2
     return 0
