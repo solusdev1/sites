@@ -147,3 +147,10 @@ test('servidor desconectado mantém importação manual como fallback', async ()
   await p.click('#import-verdict-button');
   assert.equal(opened, true);
 });
+
+test('popup mostra "aguardando render…" enquanto o Flow ainda renderiza o vídeo do item', async () => {
+  const state = fresh();
+  state.itens[0] = {...state.itens[0], status:'preenchido', render:'aguardando'};
+  const p = await popup(state);
+  assert.match(p.window.document.querySelector('.queue-item').textContent, /aguardando render/);
+});

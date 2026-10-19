@@ -75,35 +75,72 @@
     return result;  // {path, aviso?}: aviso quando o Chrome salvou fora de Downloads/veo3/<persona>/
   }
 
-  const folder = (state, item) => `veo3/${String(state?.persona_id || 'sem_persona').replace(/[^\w.-]+/g, '_')}/${item.id}`;
+  const personaId = state => String(state?.persona_id || 'sem_persona').replace(/[^\w.-]+/g, '_');
+  const folder = (state, item) => `veo3/${personaId(state)}/${item.id}`;
 
-  // Depois de gerar: baixa o MP4 para Downloads/veo3/<persona>/<item>.mp4 e salva o último frame em
-  // <item>_last.png (e no storage, para o Início do próximo vídeo). Uma falha não impede a outra.
+  // Servidor local (python -m veo_pipeline servir), via service worker. undefined/erro = servidor fora: segue sem ele.
+  async function ask(message) {
+    try { return await global.chrome.runtime.sendMessage(message); }
+    catch { return undefined; }
+  }
+
+  // Último frame extraído pelo servidor com ffmpeg do MP4 baixado (preferido ao canvas do player). since: só aceita
+  // frame de um MP4 gravado depois desse instante (ms), para não devolver o do vídeo antigo.
+  async function serverFrame(persona, id, since = 0) {
+    const result = await ask({type:'ULTIMO_FRAME', persona, item_id:id, depois:since});
+    if (result?.ok && typeof result.data === 'string' && result.data.startsWith('data:image/png')) return result;
+    if (result?.preto) return {preto:true, erro:result.erro || 'último frame quase todo preto'};
+    return null;
+  }
+
+  async function canvasFrame(doc, name, id, base, fields, avisos) {
+    const actions = global.FlowActions;
+    try {
+      await actions.openVideo(doc, name);
+      const file = await actions.captureLastFrame(doc, `${id}_last.png`);
+      await actions.backToProject(doc);
+      const data = await dataUrl(file);
+      await saveFrame(id, {name:file.name, data});
+      const png = await download(data, `${base}_last.png`);
+      fields.ultimo_frame = png.path;
+      fields.frame_fonte = 'canvas';
+      if (png.aviso) avisos.push(png.aviso);
+      fields.frame_erro = null;
+      return null;
+    } catch (error) {
+      await actions.backToProject(doc).catch(() => {});
+      return error;
+    }
+  }
+
+  // Depois de gerar: baixa o MP4 para Downloads/veo3/<persona>/<item>.mp4 (sobrescreve; com o servidor ligado o
+  // anterior vira <item>.vN.mp4) e obtém o último frame <item>_last.png: primeiro do servidor (ffmpeg no MP4), senão
+  // do canvas do player com checagem de frame preto. Uma falha não impede a outra.
   async function collect(item, name, doc = document) {
     const actions = global.FlowActions;
-    const base = folder(await readState(), item);
+    const state = await readState();
+    const persona = personaId(state), base = folder(state, item);
     const fields = {}, errors = [], avisos = [];
+    let since = null;
     try {
-      const video = await download(await actions.videoSource(doc, name), `${base}.mp4`);
+      const src = await actions.videoSource(doc, name);
+      const versao = await ask({type:'VERSIONAR', persona, item_id:item.id});
+      fields.video_anterior = versao?.ok && versao.anterior ? versao.anterior : null;
+      since = Date.now() - 2000;  // folga de relógio/arredondamento do mtime
+      const video = await download(src, `${base}.mp4`);
       fields.video_path = video.path;
       fields.download_aviso = video.aviso || null;
       if (video.aviso) avisos.push(video.aviso);
       fields.download_erro = null;
-    } catch (error) { fields.download_erro = error.message; errors.push(`vídeo: ${error.message}`); }
-    try {
-      await actions.openVideo(doc, name);
-      const file = await actions.captureLastFrame(doc, `${item.id}_last.png`);
-      await actions.backToProject(doc);
-      const data = await dataUrl(file);
-      await saveFrame(item.id, {name:file.name, data});
-      const png = await download(data, `${base}_last.png`);
-      fields.ultimo_frame = png.path;
-      if (png.aviso) avisos.push(png.aviso);
-      fields.frame_erro = null;
-    } catch (error) {
-      fields.frame_erro = error.message;
-      errors.push(`último frame: ${error.message}`);
-      await actions.backToProject(doc).catch(() => {});
+    } catch (error) { since = null; fields.download_erro = error.message; errors.push(`vídeo: ${error.message}`); }
+    const fromServer = since === null ? null : await serverFrame(persona, item.id, since);
+    if (fromServer?.data) {
+      await saveFrame(item.id, {name:`${item.id}_last.png`, data:fromServer.data});
+      Object.assign(fields, {ultimo_frame:fromServer.path, frame_fonte:'servidor', frame_erro:null});
+    } else {
+      if (fromServer?.preto) avisos.push(`o servidor achou o último frame preto (${fromServer.erro}); tentei o player.`);
+      const error = await canvasFrame(doc, name, item.id, base, fields, avisos);
+      if (error) { fields.frame_erro = error.message; errors.push(`último frame: ${error.message}`); }
     }
     await saveFields(item.id, fields);
     if (errors.length) notify(`Não consegui tudo de "${item.hook || item.id}" (${errors.join('; ')}). Use "Baixar vídeo atual" no popup.`);
@@ -112,17 +149,21 @@
     return {ok:!errors.length, ...fields};
   }
 
-  // Depois de preparar, acompanha o clique do usuário em gerar: quando o resultado aparece, marca 'gerado',
-  // guarda o nome da mídia no Flow (flow_midia) e, se for vídeo, baixa o MP4 e o último frame.
+  // Depois de preparar, acompanha o clique do usuário em gerar: quando o resultado TERMINA de renderizar, marca
+  // 'gerado', guarda o nome da mídia no Flow (flow_midia) e, se for vídeo, baixa o MP4 e o último frame.
   function watchGeneration(item, kind, doc) {
     const actions = global.FlowActions;
     const before = actions.mediaCount(doc, kind);
     const failuresBefore = actions.failures(doc);
-    const watch = actions.waitNewMedia(kind, before, doc, undefined, failuresBefore).then(async name => {
-      await saveStatus(item.id, 'gerado', {flow_midia:name});
+    const onWaiting = () => {
+      saveFields(item.id, {render:'aguardando'}).catch(() => {});
+      notify(`"${item.hook || item.id}": aguardando render… a extensão marca "gerado" quando o Flow terminar.`, 'info');
+    };
+    const watch = actions.waitNewMedia(kind, before, doc, undefined, failuresBefore, {onWaiting}).then(async name => {
+      await saveStatus(item.id, 'gerado', {flow_midia:name, render:null});
       if (kind !== 'video') notify(`"${item.hook || item.id}" gerado no Flow (${name}). Revise e aprove ou rejeite.`, 'success');
       return name;
-    }, error => { notify(error.message); throw error; });
+    }, error => { saveFields(item.id, {render:null}).catch(() => {}); notify(error.message); throw error; });
     watch.catch(() => {});
     FlowContent.lastWatch = watch;
     FlowContent.lastCollect = kind === 'video' ? watch.then(name => collect(item, name, doc)) : null;
@@ -169,10 +210,17 @@
     }
     if (frame.startsWith('ultimo_frame:')) {
       // Último frame do vídeo anterior vira o Início de um vídeo novo (sem "Estender").
-      const source = (await readState())?.itens?.find(other => other.id === frame.split(':')[1]);
-      await actions.openVideo(doc, source?.flow_midia || '');
-      const file = await actions.captureLastFrame(doc, `${frame.split(':')[1]}_last.png`);
-      await actions.backToProject(doc);
+      const state = await readState();
+      const sourceId = frame.split(':')[1];
+      const source = state?.itens?.find(other => other.id === sourceId);
+      const fromServer = await serverFrame(personaId(state), sourceId);
+      let file;
+      if (fromServer?.data) file = await toFile({name:`${sourceId}_last.png`, data:fromServer.data, type:'image/png'});
+      else {
+        await actions.openVideo(doc, source?.flow_midia || '');
+        file = await actions.captureLastFrame(doc, `${sourceId}_last.png`);
+        await actions.backToProject(doc);
+      }
       const {credits} = await actions.configure(item.flow, doc, win, {duracao_s});
       await actions.uploadStartFrame(file, doc, win, {onRights});
       fillOrThrow(prompt, doc, win);

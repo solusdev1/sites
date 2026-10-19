@@ -130,6 +130,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "validar":
             validate(args.tipo, load_json(args.arquivo))
             print("ok")
+    except servidor.PortaOcupada as exc:
+        print(f"erro: {exc}", file=sys.stderr)
+        return 3
     except (ValidationError, auto_veo.VeoError, FileNotFoundError, ValueError, ImportError) as exc:
         print(f"erro: {exc}", file=sys.stderr)
         return 2

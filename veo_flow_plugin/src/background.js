@@ -46,11 +46,50 @@ async function download({url, filename}, downloads = chrome.downloads) {
   });
 }
 
-globalThis.FlowBackground = {download};
+// Servidor local (python -m veo_pipeline servir): só o service worker tem host_permissions para 127.0.0.1:8765.
+const SERVER = 'http://127.0.0.1:8765';
+const ID = /^[A-Za-z0-9_-]+$/;
+async function server(path, {method = 'GET', body, timeout = 3000} = {}, fetchFn = fetch) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetchFn(`${SERVER}${path}`, {method, signal:controller.signal,
+      ...(body ? {headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)} : {})});
+    return {status:response.status, json:await response.json().catch(() => ({}))};
+  } finally { clearTimeout(timer); }
+}
+
+// Guarda o MP4 anterior como <item>.vN.mp4 antes de baixar o novo (sem servidor: o download sobrescreve).
+async function versionar({persona, item_id}, fetchFn = fetch) {
+  if (!ID.test(persona || '') || !ID.test(item_id || '')) return {ok:false, error:'persona ou item inválido'};
+  try {
+    const {status, json} = await server('/versionar', {method:'POST', body:{persona, item_id}}, fetchFn);
+    return status === 200 ? {ok:true, anterior:json.anterior || null} : {ok:false, error:json.erro || `HTTP ${status}`};
+  } catch (error) { return {ok:false, offline:true, error:error.message}; }
+}
+
+// Último frame extraído pelo servidor (ffmpeg) do MP4 gravado depois de `depois` (ms). 404 = ainda não: espera.
+async function ultimoFrame({persona, item_id, depois = 0, espera_ms = 45000, intervalo_ms = 1500}, fetchFn = fetch) {
+  if (!ID.test(persona || '') || !ID.test(item_id || '')) return {ok:false, error:'persona ou item inválido'};
+  const end = Date.now() + espera_ms;
+  for (;;) {
+    let reply;
+    try { reply = await server(`/ultimo-frame/${persona}/${item_id}?depois=${Math.floor(Number(depois) || 0)}`, {timeout:20000}, fetchFn); }
+    catch (error) { return {ok:false, offline:true, error:error.message}; }
+    const {status, json} = reply;
+    if (status === 200 && typeof json.data === 'string') return {ok:true, path:json.path, data:json.data};
+    if (status === 422) return {ok:false, preto:!!json.preto, error:json.erro, erro:json.erro};
+    if (status !== 404 || Date.now() > end) return {ok:false, error:json.erro || `HTTP ${status}`};
+    await new Promise(resolve => setTimeout(resolve, intervalo_ms));
+  }
+}
+
+globalThis.FlowBackground = {download, versionar, ultimoFrame};
 if (globalThis.chrome?.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type !== 'DOWNLOAD') return false;
-    download(message).then(sendResponse, error => sendResponse({ok:false, error:error.message}));
+    const handler = {DOWNLOAD:download, VERSIONAR:versionar, ULTIMO_FRAME:ultimoFrame}[message?.type];
+    if (!handler) return false;
+    handler(message).then(sendResponse, error => sendResponse({ok:false, error:error.message}));
     return true;
   });
 }

@@ -18,7 +18,7 @@ function load({finalPath = String.raw`C:\Users\u\Downloads\veo3\maya\a.mp4`} = {
   };
   const messages = [];
   const chrome = {downloads, runtime:{id:'flowcopiloto', onMessage:{addListener: l => messages.push(l)}}};
-  const context = vm.createContext({chrome, setTimeout, clearTimeout});
+  const context = vm.createContext({chrome, setTimeout, clearTimeout, AbortController});
   vm.runInContext(script, context);
   const finish = next => { state = next; listeners.forEach(l => l({id:7, state:{current:next}})); };
   return {context, calls, finish, listeners, messages, naming};
@@ -78,4 +78,25 @@ test('background: se o Chrome salvar fora de veo3/<persona>/, devolve o caminho 
   assert.equal(result.path, String.raw`C:\Users\u\Downloads\058446ca-597d.mp4`);
   assert.match(result.aviso, /fora de Downloads\/veo3\/maya\/a\.mp4/);
   assert.match(result.aviso, /outra extensão/);
+});
+
+test('background: último frame do servidor local espera o MP4 novo (404) e devolve o PNG; preto e offline viram erro', async () => {
+  const b = load();
+  const urls = [];
+  let replies = [{status:404, json:{erro:'ainda não'}}, {status:200, json:{path:'C:/D/veo3/maya/a_last.png', data:'data:image/png;base64,AA'}}];
+  const fetchFn = async (url, options) => { urls.push([url, options.method]); const r = replies.shift(); return {status:r.status, json: async () => r.json}; };
+  const ok = await b.context.FlowBackground.ultimoFrame({persona:'maya', item_id:'a', depois:1234.5, intervalo_ms:1}, fetchFn);
+  assert.deepEqual({...ok}, {ok:true, path:'C:/D/veo3/maya/a_last.png', data:'data:image/png;base64,AA'});
+  assert.deepEqual(urls.map(u => u[0]), ['http://127.0.0.1:8765/ultimo-frame/maya/a?depois=1234', 'http://127.0.0.1:8765/ultimo-frame/maya/a?depois=1234']);
+  replies = [{status:422, json:{erro:'quase todo preto', preto:true}}];
+  const black = await b.context.FlowBackground.ultimoFrame({persona:'maya', item_id:'a'}, fetchFn);
+  assert.equal(black.ok, false);
+  assert.equal(black.preto, true);
+  const offline = await b.context.FlowBackground.ultimoFrame({persona:'maya', item_id:'a'}, async () => { throw new Error('Failed to fetch'); });
+  assert.equal(offline.offline, true);
+  assert.equal((await b.context.FlowBackground.ultimoFrame({persona:'../x', item_id:'a'}, fetchFn)).ok, false);
+  replies = [{status:200, json:{anterior:'C:/D/veo3/maya/a.v1.mp4'}}];
+  const v = await b.context.FlowBackground.versionar({persona:'maya', item_id:'a'}, fetchFn);
+  assert.deepEqual({...v}, {ok:true, anterior:'C:/D/veo3/maya/a.v1.mp4'});
+  assert.deepEqual(urls.at(-1), ['http://127.0.0.1:8765/versionar', 'POST']);
 });

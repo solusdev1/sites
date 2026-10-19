@@ -124,6 +124,7 @@ function renderItem(item, index) {
 // Caminhos gravados no estado: o que já foi baixado e o frame que continua a sequência.
 function files(item) {
   const lines = [];
+  if (item.render === 'aguardando' && item.status === 'preenchido') lines.push('⏳ aguardando render… (marca "gerado" e baixa o MP4 quando o Flow terminar)');
   if (item.video_path) lines.push(`MP4 salvo em: ${item.video_path}`);
   if (item.download_aviso) lines.push(`⚠ ${item.download_aviso}`);
   else if (!item.video_path && item.download_erro) lines.push(`⚠ MP4 NÃO baixado: ${item.download_erro}. Use "Baixar vídeo atual".`);

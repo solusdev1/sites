@@ -87,3 +87,113 @@ def test_watcher_extrai_apos_mp4_estabilizar(tmp_path, monkeypatch):
     service.scan_once()
     service.scan_once()
     assert calls == [("maya", "abc")]
+
+
+def _color_video(path, color, seconds=1):
+    import shutil
+    import subprocess
+    import pytest
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg ausente")
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"color=c={color}:s=64x64:r=4:d={seconds}",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", str(path)], check=True)
+
+
+def _serve(tmp_path):
+    server = servidor.make_server(tmp_path, 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread, f"http://127.0.0.1:{server.server_port}"
+
+
+def test_ultimo_frame_do_servidor_com_ffmpeg_e_frame_preto(tmp_path):
+    persona = tmp_path / "maya"
+    persona.mkdir()
+    video = persona / "58155a350544.mp4"
+    _color_video(video, "red")
+    # Bug real: um _last.png todo preto, mais novo que o MP4, ficou na pasta; o servidor refaz a partir do MP4.
+    from PIL import Image
+    Image.new("RGBA", (1080, 1920), (0, 0, 0, 255)).save(persona / "58155a350544_last.png")
+    server, thread, base = _serve(tmp_path)
+    try:
+        _, body = request(base, "/ultimo-frame/maya/58155a350544")
+        assert body["path"] == str(persona / "58155a350544_last.png")
+        assert body["data"].startswith("data:image/png;base64,")
+        assert not servidor.qa.frame_is_black(persona / "58155a350544_last.png")
+        mtime_ms = video.stat().st_mtime_ns // 1_000_000
+        try:
+            request(base, f"/ultimo-frame/maya/58155a350544?depois={mtime_ms + 60000}")
+            assert False, "devolveu o frame do MP4 antigo"
+        except HTTPError as error:
+            assert error.code == 404
+        _color_video(video, "black")
+        try:
+            request(base, "/ultimo-frame/maya/58155a350544")
+            assert False, "frame preto entregue"
+        except HTTPError as error:
+            assert error.code == 422
+            assert json.load(error)["preto"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+
+def test_versionar_guarda_mp4_veredito_e_frame_anteriores(tmp_path):
+    persona = tmp_path / "maya"
+    persona.mkdir()
+    for name in ("a.mp4", "a.verdict.json", "a_last.png"):
+        (persona / name).write_bytes(b"velho")
+    (persona / "a.v1.mp4").write_bytes(b"mais velho")
+    server, thread, base = _serve(tmp_path)
+    try:
+        _, body = request(base, "/versionar", {"persona": "maya", "item_id": "a"}, origin="chrome-extension://" + "a" * 32)
+        assert body == {"anterior": str(persona / "a.v2.mp4")}
+        assert not (persona / "a.mp4").exists()
+        assert (persona / "a.v2.verdict.json").read_bytes() == b"velho"
+        assert (persona / "a.v2_last.png").read_bytes() == b"velho"
+        assert request(base, "/versionar", {"persona": "maya", "item_id": "a"})[1] == {"anterior": None}
+        # Versões guardadas não entram no watcher (nem viram aviso de nome inválido).
+        server.qa_service.scan_once()
+        assert all(not path.name.startswith("a.v") for path in server.qa_service._seen)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+
+def test_qa_extrair_marca_ultimo_frame_preto_e_veredito_recusa(tmp_path):
+    from veo_pipeline import roteiro
+    from veo_pipeline.fila import save_fila
+    from veo_pipeline.persona import load_persona
+    from pathlib import Path
+    persona = load_persona(Path(__file__).resolve().parent.parent / "data" / "personas" / "maya.json")
+    fila = roteiro.gerar_sequencia(persona, "viagem", 1)
+    item_id = next(i["id"] for i in fila["itens"] if i["tipo"] == "veo")
+    fila["persona"] = persona
+    save_fila(tmp_path / "fila.json", fila)
+    _color_video(tmp_path / "v.mp4", "black")
+    checklist = servidor.qa.extract(tmp_path / "v.mp4", item_id, tmp_path / "fila.json", tmp_path / "qa")
+    assert checklist["ultimo_frame_preto"] is True
+    assert checklist["ultimo_frame"] is None
+    assert "preto" in checklist["avisos"][0]
+    verdict = {"item_id": item_id, "verdict": "aprovado", "motivos": [], "frame_continuacao": str(tmp_path / "qa" / "last.png"),
+               "corte_sugerido": None, "prompt_correcao": None}
+    (tmp_path / "v.verdict.json").write_text(json.dumps(verdict), encoding="utf-8")
+    import pytest
+    with pytest.raises(ValueError, match="preto"):
+        servidor.qa.validate_verdict(tmp_path / "v.verdict.json")
+
+
+def test_segunda_instancia_na_mesma_porta_falha(tmp_path, capsys):
+    import pytest
+    from veo_pipeline.cli import main
+    first = servidor.make_server(tmp_path, 0)
+    port = first.server_port
+    try:
+        with pytest.raises(servidor.PortaOcupada, match=str(port)):
+            servidor.make_server(tmp_path, port)
+        assert main(["servir", "--pasta", str(tmp_path), "--porta", str(port)]) != 0
+        assert "já está em uso" in capsys.readouterr().err
+    finally:
+        first.server_close()

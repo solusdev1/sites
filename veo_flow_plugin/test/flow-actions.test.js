@@ -11,7 +11,7 @@ test.afterEach(() => { while (windows.length) windows.pop().close(); });
 
 // Flow falso com o comportamento mapeado no Flow real (2026-10-18): menu de radios do Angular CDK que fecha com
 // Escape no body, seletor de mídia com abas/opções/"Incluir no comando", geração com "%" e Estender no editor de cena.
-function flow({credits = {imagem: 0, video: 15}, videos = 0, failSilently = false, rights = true, images = ['Woman standing in studio']} = {}) {
+function flow({credits = {imagem: 0, video: 15}, videos = 0, failSilently = false, rights = true, images = ['Woman standing in studio'], renderInTile = false, renderMs = 30} = {}) {
   const dom = new JSDOM(`<main><div class="grid"></div><div class="editor"></div></main>
     <div class="base-prompt-box"><div class="slots"></div>
       <div class="ProseMirror" contenteditable="true" role="textbox" aria-label="O que você quer criar?"><p><br></p></div>
@@ -121,11 +121,31 @@ function flow({credits = {imagem: 0, video: 15}, videos = 0, failSilently = fals
     if (icon === 'play_circle') {
       const container = kind.querySelector('.container');
       container.addEventListener('click', () => openEditor(name));
-      // Como no Flow real: o <video> só existe enquanto o mouse está sobre o tile.
-      container.addEventListener('mouseenter', () => { container.innerHTML = `<video src="https://flow.google.com/asb/video-${encodeURIComponent(name)}"></video>`; });
+      // Como no Flow real: o <video> só existe enquanto o mouse está sobre o tile e chega a readyState 4 com a duração.
+      container.addEventListener('mouseenter', () => {
+        if (tile.dataset.rendering) return;
+        container.innerHTML = `<video src="https://flow.google.com/asb/video-${encodeURIComponent(name)}"></video>`;
+        const v = container.querySelector('video');
+        Object.defineProperty(v, 'readyState', {value:4});
+        Object.defineProperty(v, 'duration', {value:8.0078});
+      });
     }
     tile.append(kind);
     grid.prepend(tile);
+    return tile;
+  };
+  // "Regenerar este" no Flow real: o tile novo entra no grid JÁ renderizando; o percentual fica colado no texto do
+  // ícone ("play_circle42%") e o <video> do hover não tem dados (readyState 0, duration NaN).
+  const addRenderingTile = name => {
+    const tile = addTile(name);
+    tile.dataset.rendering = '1';
+    const container = tile.querySelector('.container');
+    container.innerHTML = '<mat-icon>play_circle</mat-icon><span class="pct">42%</span><video src="https://flow.google.com/asb/video-parcial"></video>';
+    setTimeout(() => {
+      delete tile.dataset.rendering;
+      container.innerHTML = '<img class="thumbnail" src="https://flow.google.com/asb/thumb">';
+      log.push(`renderizou:${name}`);
+    }, renderMs);
   };
   for (let i = 1; i <= videos; i++) addTile(`Video ${i}`);
   function openEditor(name) {
@@ -214,6 +234,7 @@ function flow({credits = {imagem: 0, video: 15}, videos = 0, failSilently = fals
 
   generate.addEventListener('click', () => {
     log.push('gerar');
+    if (renderInTile) return addRenderingTile(config.modo === 'video' ? 'Novo video' : 'Nova imagem');
     const progress = doc.createElement('span');
     progress.textContent = '42%';
     grid.prepend(progress);
@@ -223,11 +244,21 @@ function flow({credits = {imagem: 0, video: 15}, videos = 0, failSilently = fals
       addTile(config.modo === 'video' ? 'Novo video' : 'Nova imagem', config.modo === 'video' ? 'play_circle' : 'image');
     }, 30);
   });
+  // Pixels do player: o 2D context devolve frame.pixel (preto = player ainda sem vídeo, por blackReads leituras).
+  const frame = {pixel:[180, 140, 120, 255], blackReads:0};
+  window.HTMLCanvasElement.prototype.getContext = function () {
+    return {drawImage() {}, getImageData: (x, y, w, h) => {
+      const px = frame.blackReads > 0 ? (frame.blackReads--, [0, 0, 0, 255]) : frame.pixel;
+      const data = new Uint8ClampedArray(w * h * 4);
+      for (let i = 0; i < data.length; i += 4) data.set(px, i);
+      return {data};
+    }};
+  };
   for (const s of scripts) window.eval(s);
   window.FlowActions.setDelay(1);
   windows.push(window);
   store.veoFlowState = {version:1, itens:[{id:'a', status:'pendente'}]};
-  return {window, doc, config, log, store, editor, elements};
+  return {window, doc, config, log, store, editor, elements, frame};
 }
 
 const imagem = {id:'a', tipo:'imagem', flow:{modo:'imagem', proporcao:'9:16', submodo:null}, frame_inicial:''};
@@ -285,7 +316,7 @@ test('vídeo seguinte: abre o vídeo anterior PELO NOME gravado, captura o últi
   // 'Video 2' é o mais recente, mas o item de origem registrou 'Video 1' (ex.: um envio entrou no meio).
   f.store.veoFlowState.itens.push({id:'v1', status:'gerado', flow_midia:'Video 1'});
   const notices = [];
-  f.window.chrome.runtime = {sendMessage: async m => { notices.push(m.text); f.doc.querySelector('[role="dialog"] button:last-child')?.click(); }};
+  f.window.chrome.runtime = {sendMessage: async m => { if (m.type !== 'FLOW_NOTICE') return undefined; notices.push(m.text); f.doc.querySelector('[role="dialog"] button:last-child')?.click(); }};
   const r = await f.window.FlowContent.runStep({...video, frame_inicial:'ultimo_frame:v1'}, 'Ela diz Siga-nos', f.doc, f.window);
   assert.equal(r.status, 'preenchido');
   const order = ['abriu:Video 1', 'frame:00:08:00 / 00:08:00', 'voltar', 'radio:9:16', 'upload:v1_last.png', 'concordo(usuario)', 'selecionou:v1_last.png'];
@@ -451,4 +482,99 @@ test('fila sem flow (padrão Vídeo → Frames): não força a duração do item
   const r = await f.window.FlowContent.runStep({id:'a', tipo:'veo', duracao_s:6, flow:{modo:'video', proporcao:'9:16', submodo:'frames'}, flow_padrao:true, frame_inicial:''}, 'p', f.doc, f.window);
   assert.equal(r.status, 'preenchido');
   assert.equal(f.config.duracao, '8s');  // ficou o que o Flow já tinha
+});
+
+// Bug real (Flow, item 58155a350544 da maya, "Regenerar este"): o vídeo começou a aparecer no projeto ainda
+// renderizando e a extensão já marcou "gerado", salvou um _last.png todo preto e não baixou o MP4 novo.
+test('regenerar: tile novo ainda renderizando ("play_circle42%", <video> sem dados) NÃO vira gerado; avisa "aguardando render…"', async () => {
+  const f = flow({videos: 1, rights:false, renderInTile:true, renderMs:300});
+  f.store.veoFlowState.persona_id = 'maya';
+  const notices = [], downloads = [];
+  f.window.chrome.runtime = {sendMessage: async m => {
+    if (m.type === 'DOWNLOAD') { downloads.push(m); return {ok:true, path:`Downloads/${m.filename}`}; }
+    if (m.type === 'FLOW_NOTICE') notices.push(m);
+    return undefined;
+  }};
+  await f.window.FlowContent.runStep(video, 'p', f.doc, f.window);
+  userClicksGenerate(f);
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(status(f), 'preenchido');
+  assert.equal(f.store.veoFlowState.itens[0].render, 'aguardando');
+  assert.ok(notices.some(n => n.kind === 'info' && /aguardando render/.test(n.text)));
+  assert.equal(downloads.length, 0);
+  assert.equal(await f.window.FlowContent.lastWatch, 'Novo video');
+  assert.ok(f.log.includes('renderizou:Novo video'));
+  assert.equal(status(f), 'gerado');
+  assert.equal(f.store.veoFlowState.itens[0].render, null);
+  await f.window.FlowContent.lastCollect;
+  assert.equal(downloads[0].url, 'https://flow.google.com/asb/video-Novo%20video');
+  assert.equal(downloads[0].filename, 'veo3/maya/a.mp4');
+});
+
+test('tileBusy/generating: percentual colado no ícone, spinner ou tile sem mídia contam como gerando', () => {
+  const f = flow();
+  const A = f.window.FlowActions;
+  const tile = html => { const t = f.doc.createElement('div'); t.innerHTML = html; return t; };
+  assert.equal(A.tileBusy(tile('<mat-icon>play_circle</mat-icon><span>42%</span><img src="https://x/t">')), true);
+  assert.equal(A.tileBusy(tile('<img src="https://x/t"><mat-progress-spinner></mat-progress-spinner>')), true);
+  assert.equal(A.tileBusy(tile('<mat-icon>play_circle</mat-icon>')), true);
+  assert.equal(A.tileBusy(tile('<mat-icon>play_circle</mat-icon><img class="thumbnail" src="https://x/t">')), false);
+  f.doc.querySelector('.grid').innerHTML = '<span>play_circle</span><span>7%</span>';
+  assert.equal(A.generating(f.doc), true);
+});
+
+test('último frame preto no canvas: tenta de novo; preto sempre vira erro claro (não salva PNG preto)', async () => {
+  const f = flow({videos: 1, rights:false});
+  f.frame.blackReads = 1;
+  await f.window.FlowActions.openVideo(f.doc, 'Video 1');
+  const file = await f.window.FlowActions.captureLastFrame(f.doc, 'a_last.png');
+  assert.equal(file.name, 'a_last.png');
+  assert.equal(f.frame.blackReads, 0);
+  f.frame.blackReads = 99;
+  await assert.rejects(f.window.FlowActions.captureLastFrame(f.doc, 'a_last.png', {attempts:2}), /preto 2 vezes/);
+});
+
+test('último frame vem do servidor local (ffmpeg no MP4) quando ligado; versiona o MP4 anterior; não abre o player', async () => {
+  const f = flow({videos: 1, rights:false});
+  f.store.veoFlowState.persona_id = 'maya';
+  const calls = [];
+  const png = 'data:image/png;base64,iVBORw0KGgo=';
+  f.window.chrome.runtime = {sendMessage: async m => {
+    calls.push(m);
+    if (m.type === 'DOWNLOAD') return {ok:true, path:`Downloads/${m.filename}`};
+    if (m.type === 'VERSIONAR') return {ok:true, anterior:'Downloads/veo3/maya/a.v1.mp4'};
+    if (m.type === 'ULTIMO_FRAME') return {ok:true, path:'Downloads/veo3/maya/a_last.png', data:png};
+    return undefined;
+  }};
+  await f.window.FlowContent.runStep(video, 'p', f.doc, f.window);
+  userClicksGenerate(f);
+  const result = await f.window.FlowContent.lastCollect;
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls.map(c => c.type).filter(t => t !== 'FLOW_NOTICE'), ['VERSIONAR', 'DOWNLOAD', 'ULTIMO_FRAME']);
+  const asked = calls.find(c => c.type === 'ULTIMO_FRAME');
+  assert.deepEqual({persona:asked.persona, item_id:asked.item_id}, {persona:'maya', item_id:'a'});
+  assert.ok(asked.depois > Date.now() - 60000);
+  assert.ok(!f.log.some(l => l.startsWith('abriu:')));
+  const item = f.store.veoFlowState.itens[0];
+  assert.equal(item.ultimo_frame, 'Downloads/veo3/maya/a_last.png');
+  assert.equal(item.frame_fonte, 'servidor');
+  assert.equal(item.video_anterior, 'Downloads/veo3/maya/a.v1.mp4');
+  assert.equal(f.store.veoFlowFrames.a.data, png);
+});
+
+test('servidor diz que o último frame é preto: cai no player e avisa', async () => {
+  const f = flow({videos: 1, rights:false});
+  const notices = [];
+  f.window.chrome.runtime = {sendMessage: async m => {
+    if (m.type === 'DOWNLOAD') return {ok:true, path:m.filename};
+    if (m.type === 'ULTIMO_FRAME') return {ok:false, preto:true, erro:'luminância média 0,0'};
+    if (m.type === 'FLOW_NOTICE') notices.push(m.text);
+    return undefined;
+  }};
+  await f.window.FlowContent.runStep(video, 'p', f.doc, f.window);
+  userClicksGenerate(f);
+  const result = await f.window.FlowContent.lastCollect;
+  assert.equal(result.frame_fonte, 'canvas');
+  assert.ok(f.log.includes('abriu:Novo video'));
+  assert.match(notices.at(-1), /preto/);
 });

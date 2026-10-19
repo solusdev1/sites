@@ -67,6 +67,27 @@ def extract_last_frame(video: str | Path, out: str | Path) -> Path:
     return target
 
 
+# Frame "preto": luminância média e desvio baixos (no Flow real saiu um _last.png 1080x1920 todo preto quando o
+# player ainda não tinha pintado o vídeo). Um frame assim nunca é entregue como continuação.
+BLACK_MEAN, BLACK_STD = 8.0, 4.0
+
+
+def frame_stats(path: str | Path) -> tuple[float, float]:
+    from PIL import Image, ImageStat  # import lazy
+    with Image.open(path) as image:
+        if image.mode in ("RGBA", "LA", "P"):
+            rgba = image.convert("RGBA")
+            background = Image.new("RGBA", rgba.size, (0, 0, 0, 255))
+            image = Image.alpha_composite(background, rgba)
+        stat = ImageStat.Stat(image.convert("L"))
+        return float(stat.mean[0]), float(stat.stddev[0])
+
+
+def frame_is_black(path: str | Path) -> bool:
+    mean, std = frame_stats(path)
+    return mean < BLACK_MEAN and std < BLACK_STD
+
+
 _OBJECTS = ("mala", "celular", "carta", "foto", "fone", "caixa", "copo", "bolsa", "chave", "garrafa")
 _COUNTS = {"um": 1, "uma": 1, "dois": 2, "duas": 2, "três": 3, "quatro": 4}
 
@@ -147,6 +168,11 @@ def extract(video: str | Path, item_id: str, fila_path: str | Path, out_dir: str
                 prior_verdict = validate_verdict(candidate)
                 previous_frame = prior_verdict.get("frame_continuacao")
                 break
+    avisos = []
+    last_black = frame_is_black(out_dir / "last.png")
+    if last_black:
+        avisos.append("último frame quase todo preto: não use last.png como frame_continuacao; "
+                      "escolha o último quadro bom e extraia com ffmpeg")
     checklist = {
         "item_id": item_id, "video": str(video.resolve()), "duracao_s": duration,
         "cena": item["cena"], "prompt_final": item["prompt_final"],
@@ -158,7 +184,8 @@ def extract(video: str | Path, item_id: str, fila_path: str | Path, out_dir: str
                          "item_anterior_id": previous["id"] if previous else None,
                          "frame_continuacao_anterior": previous_frame},
         "frames": frames, "primeiro_frame": str((out_dir / "first.png").resolve()),
-        "ultimo_frame": str((out_dir / "last.png").resolve()),
+        "ultimo_frame": None if last_black else str((out_dir / "last.png").resolve()),
+        "ultimo_frame_preto": last_black, "avisos": avisos,
     }
     dump_json(out_dir / "checklist.json", checklist)
     return checklist
@@ -167,6 +194,9 @@ def extract(video: str | Path, item_id: str, fila_path: str | Path, out_dir: str
 def validate_verdict(path: str | Path) -> dict:
     verdict = load_json(path)
     validate("verdict", verdict)
+    frame = verdict.get("frame_continuacao")
+    if frame and Path(frame).is_file() and frame_is_black(frame):
+        raise ValueError(f"frame_continuacao quase todo preto: {frame}; escolha outro quadro")
     return verdict
 
 

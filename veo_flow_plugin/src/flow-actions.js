@@ -134,8 +134,40 @@
     await waitFor(() => inEditor(doc) && doc.querySelector('canvas'), 'editor do vídeo');
   }
 
-  // No editor, pula para o fim do clipe e lê o frame direto do canvas do player (sem baixar nada).
-  async function captureLastFrame(doc = document, name = 'ultimo_frame.png') {
+  // Frame preto/transparente: o player ainda não pintou (no Flow real saiu um PNG 1080x1920 todo preto). Mede a
+  // luminância numa cópia pequena do canvas; null quando o navegador não deixa ler os pixels.
+  const BLACK_MEAN = 8, BLACK_STD = 4;
+  function frameStats(canvas, doc) {
+    const probe = doc.createElement('canvas');
+    probe.width = 64; probe.height = 64;
+    let ctx = null;
+    try { ctx = probe.getContext('2d'); } catch { return null; }
+    if (!ctx) return null;
+    try {
+      ctx.drawImage(canvas, 0, 0, 64, 64);
+      const {data} = ctx.getImageData(0, 0, 64, 64);
+      let sum = 0, sq = 0;
+      const n = data.length / 4;
+      for (let i = 0; i < data.length; i += 4) {
+        const y = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) * data[i + 3] / 255;
+        sum += y; sq += y * y;
+      }
+      const mean = sum / n;
+      return {mean, std: Math.sqrt(Math.max(0, sq / n - mean * mean))};
+    } catch { return null; }
+  }
+  const isBlack = stats => !!stats && stats.mean < BLACK_MEAN && stats.std < BLACK_STD;
+
+  // Se o editor expõe o <video>, espera o seek terminar perto do fim ('seeked' / seeking=false).
+  async function waitSeekedNearEnd(doc) {
+    const video = Array.from(doc.querySelectorAll('video')).find(v => !v.closest('flow-grid-tile-container'));  // o do editor, não o do grid
+    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return;
+    await waitFor(() => !video.seeking && video.readyState >= 2 && video.currentTime >= video.duration - 0.3, 'seek ao fim do vídeo', 10000);
+  }
+
+  // No editor, pula para o fim do clipe e lê o frame direto do canvas do player (sem baixar nada). É o fallback:
+  // o caminho preferido é o servidor local extrair o último frame do MP4 com ffmpeg.
+  async function captureLastFrame(doc = document, name = 'ultimo_frame.png', {attempts = 4} = {}) {
     const end = await waitFor(() => doc.querySelector('[aria-label="Pular para o próximo clipe"]'), 'controles do player');
     const times = () => text(doc.body).match(/\d{2}:\d{2}:\d{2}/g) || [];
     // Antes de carregar, o player mostra 00:00:00 / 00:00:00 e o "pular" não faz nada (visto no Flow real).
@@ -146,31 +178,56 @@
       end.click();
       await sleep(Math.max(delay, 300));
     }
-    await sleep(Math.max(delay, 500));  // o canvas redesenha depois do seek
+    await waitSeekedNearEnd(doc);
     const type = /\.jpe?g$/i.test(name) ? 'image/jpeg' : 'image/png';
-    const canvas = await waitFor(() => doc.querySelector('canvas'), 'player do vídeo');
-    const blob = await new Promise((resolve, reject) => {
-      try { canvas.toBlob(b => b ? resolve(b) : reject(new Error('canvas vazio')), type, 0.95); }
-      catch (error) { reject(new Error(`Flow: não foi possível ler o frame do player (${error.name}).`)); }
-    });
-    return new File([blob], name, {type});
+    for (let attempt = 1; ; attempt++) {
+      await sleep(Math.max(delay, 500) * attempt);  // o canvas redesenha depois do seek
+      const canvas = await waitFor(() => doc.querySelector('canvas'), 'player do vídeo');
+      if (isBlack(frameStats(canvas, doc))) {
+        if (attempt >= attempts) throw new Error(`Flow: o último frame saiu preto ${attempts} vezes (o player ainda não pintou o vídeo). Rode o servidor local ou use "Baixar vídeo atual".`);
+        end.click();
+        continue;
+      }
+      const blob = await new Promise((resolve, reject) => {
+        try { canvas.toBlob(b => b ? resolve(b) : reject(new Error('canvas vazio')), type, 0.95); }
+        catch (error) { reject(new Error(`Flow: não foi possível ler o frame do player (${error.name}).`)); }
+      });
+      return new File([blob], name, {type});
+    }
+  }
+
+  const findTile = (doc, kind, name) => (name && mediaTiles(doc, kind).find(t => t.getAttribute('aria-label') === name)) || mediaTiles(doc, kind)[0];
+  function hover(tile, on) {
+    const target = tile.querySelector(`${KIND.video} .container`) || tile.querySelector(KIND.video) || tile;
+    const win = target.ownerDocument.defaultView;
+    const types = on ? ['pointerover', 'pointerenter', 'mouseover', 'mouseenter', 'mousemove'] : ['pointerout', 'pointerleave', 'mouseout', 'mouseleave'];
+    for (const type of types) target.dispatchEvent(new win.MouseEvent(type, {bubbles:true}));
+  }
+  const videoSrc = video => video && (video.currentSrc || video.src || video.querySelector('source')?.src) || '';
+
+  // Vídeo de verdade pronto (Flow real, 2026-10-18: no hover o <video> chega a readyState 4 e duration 10,0078 em
+  // ~0,5 s): src https, readyState >= 2 (HAVE_CURRENT_DATA) e duration finita > 0, igual por stableMs.
+  async function mediaReady(tile, timeout = 15000, stableMs = 400) {
+    hover(tile, true);
+    try {
+      let last = null;
+      return await waitFor(() => {
+        const video = tile.querySelector('video');
+        const src = videoSrc(video);
+        if (!(/^https:/.test(src) && video.readyState >= 2 && Number.isFinite(video.duration) && video.duration > 0)) { last = null; return null; }
+        if (!last || last.src !== src || last.duration !== video.duration) { last = {src, duration: video.duration, at: Date.now()}; return null; }
+        return Date.now() - last.at >= stableMs ? {src, duration: video.duration} : null;
+      }, 'vídeo carregado no grid (readyState/duração)', timeout);
+    } finally { hover(tile, false); }
   }
 
   // URL do MP4 de um vídeo do grid. No Flow real (2026-10-18) o tile só mostra um <img>; o <video> (src em
   // flow.google.com/asb/...) aparece ao passar o mouse. fetch e canvas nele falham (CORS), mas chrome.downloads
-  // baixa com os cookies do usuário.
+  // baixa com os cookies do usuário. Só devolve o endereço quando o vídeo já carregou de verdade.
   async function videoSource(doc = document, name = '') {
-    const tile = await waitFor(() => (name && mediaTiles(doc, 'video').find(t => t.getAttribute('aria-label') === name)) || mediaTiles(doc, 'video')[0], 'vídeo no projeto');
-    const target = tile.querySelector(`${KIND.video} .container`) || tile.querySelector(KIND.video);
-    const win = doc.defaultView;
-    for (const type of ['pointerover', 'pointerenter', 'mouseover', 'mouseenter', 'mousemove']) target.dispatchEvent(new win.MouseEvent(type, {bubbles:true}));
-    const src = await waitFor(() => {
-      const video = tile.querySelector('video');
-      return video && (video.currentSrc || video.src || video.querySelector('source')?.src) || null;
-    }, 'player do vídeo no grid', 10000);
-    for (const type of ['pointerout', 'pointerleave', 'mouseout', 'mouseleave']) target.dispatchEvent(new win.MouseEvent(type, {bubbles:true}));
-    if (!/^https:/.test(src)) throw new Error('Flow: endereço do vídeo não encontrado.');
-    return src;
+    const tile = await waitFor(() => findTile(doc, 'video', name), 'vídeo no projeto');
+    if (tileBusy(tile)) throw new Error('Flow: o vídeo ainda está renderizando; espere terminar.');
+    return (await mediaReady(tile)).src;
   }
 
   async function backToProject(doc = document) {
@@ -223,13 +280,31 @@
   // acompanhamos: um item novo do tipo esperado aparece (devolve o nome) ou surge um card "Falha" (erro).
   function mediaCount(doc, kind) { return mediaTiles(doc, kind).length; }
 
-  async function waitNewMedia(kind, before, doc = document, timeout = 900000, failuresBefore = failures(doc)) {
-    const tile = await waitFor(() => {
-      if (failures(doc) > failuresBefore) throw new Error('Flow: a geração falhou (veja o card "Falha" no projeto).');
-      const tiles = mediaTiles(doc, kind);
-      return !generating(doc) && tiles.length > before ? tiles[0] : null;
-    }, 'resultado da geração no projeto', timeout);
-    return tile.getAttribute('aria-label');
+  // "Gerado" só quando a geração terminou de verdade. No "Regenerar este" (Flow real, item 58155a350544) o tile novo
+  // entra no grid AINDA renderizando: contar tiles não basta. Pronto = sem progresso/spinner no tile e, para vídeo,
+  // <video> carregado (mediaReady). onWaiting avisa uma vez que está aguardando o render.
+  async function waitNewMedia(kind, before, doc = document, timeout = 30 * 60000, failuresBefore = failures(doc), {onWaiting} = {}) {
+    const end = Date.now() + timeout;
+    let warned = false;
+    const waiting = () => { if (!warned) { warned = true; onWaiting?.(); } };
+    for (;;) {
+      const tile = await waitFor(() => {
+        if (failures(doc) > failuresBefore) throw new Error('Flow: a geração falhou (veja o card "Falha" no projeto).');
+        const tiles = mediaTiles(doc, kind);
+        if (tiles.length <= before) return null;
+        if (generating(doc) || tileBusy(tiles[0])) { waiting(); return null; }
+        return tiles[0];
+      }, 'resultado da geração no projeto', Math.max(0, end - Date.now()));
+      if (kind !== 'video') return tile.getAttribute('aria-label');
+      try {
+        await mediaReady(tile, Math.max(1000, Math.min(15000, end - Date.now())));
+        return tile.getAttribute('aria-label');
+      } catch (error) {
+        if (Date.now() > end) throw error;
+        waiting();
+        await sleep(Math.max(delay, 1000));
+      }
+    }
   }
 
   // Custo atual mostrado pelo Flow (muda com os elementos: vídeo de referência encarece a geração).
@@ -246,9 +321,16 @@
     await addImageElement(doc);
   }
 
-  const generating = doc => /\b\d{1,3}%/.test(text(doc.querySelector('main') || doc.body));
+  // O textContent cola o percentual no texto dos ícones ("play_circle42%"), então NÃO pode haver \b antes do número:
+  // era a causa raiz, /\b\d{1,3}%/ não casava e o tile ainda renderizando parecia pronto.
+  const PROGRESS = /\d{1,3}(?:[.,]\d+)?\s?%/;
+  const BUSY_WORDS = /Gerando|Generating|Renderizando|Processando|Na fila/i;
+  const SPINNER = '[role="progressbar"], mat-progress-spinner, mat-spinner, mat-progress-bar, [aria-busy="true"]';
+  const generating = doc => PROGRESS.test(text(doc.querySelector('main') || doc.body));
+  // Tile ainda gerando: percentual, spinner/progressbar ou nenhuma mídia (sem miniatura nem <video>).
+  const tileBusy = tile => PROGRESS.test(text(tile)) || BUSY_WORDS.test(text(tile)) || !!tile.querySelector(SPINNER) || !tile.querySelector('img[src], video');
 
-  global.FlowActions = {configure, setStartFrame, attachReference, credits, generating, failures,
+  global.FlowActions = {configure, setStartFrame, attachReference, credits, generating, failures, tileBusy, mediaReady, frameStats, isBlack,
     openVideo, captureLastFrame, videoSource, backToProject, uploadStartFrame, addVideoElement, addImageElement, readCredits, mediaCount, waitNewMedia,
     setDelay(ms) { delay = ms; }};
   if (typeof module !== 'undefined' && module.exports) module.exports = global.FlowActions;
