@@ -47,6 +47,17 @@ def video_duration(path: str | Path) -> float:
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
+def has_audio(path: str | Path) -> bool:
+    probe = shutil.which("ffprobe")
+    if probe:
+        result = subprocess.run([probe, "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+                                 "-of", "csv=p=0", str(path)], capture_output=True, text=True)
+        if result.returncode == 0:
+            return bool(result.stdout.strip())
+    result = subprocess.run([ffmpeg_path(), "-i", str(path)], capture_output=True, text=True)
+    return bool(re.search(r"Stream #\S+.*: Audio:", result.stderr))
+
+
 def extract_frame(video: str | Path, t: float, out: str | Path) -> Path:
     target = Path(out)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -159,7 +170,15 @@ def extract(video: str | Path, item_id: str, fila_path: str | Path, out_dir: str
     persona = _persona(fila, fila_path)
     look = next((lk.get("descricao", "") for lk in persona.get("looks", [])
                  if lk.get("id") == item.get("look_id")), "")
-    previous = next((it for it in reversed(fila["itens"][:index]) if it["tipo"] != "imagem"), None)
+    # Encadeado: o anterior é o item nomeado em frame_inicial (por id), não o vizinho no array da fila.
+    frame_inicial = item.get("frame_inicial", "")
+    if frame_inicial.startswith("ultimo_frame:"):
+        source_id = frame_inicial.split(":", 1)[1]
+        previous = next((it for it in fila["itens"] if it["id"] == source_id), None)
+        if previous is None:
+            raise ValueError(f"item {item_id}: frame_inicial aponta para {source_id}, que não existe na fila")
+    else:
+        previous = next((it for it in reversed(fila["itens"][:index]) if it["tipo"] != "imagem"), None)
     previous_frame = None
     if previous:
         for candidate in (out_dir.parent / previous["id"] / f"{previous['id']}.verdict.json",
@@ -252,10 +271,31 @@ def _find_clip(directory: Path, item_id: str) -> Path:
     return matches[0]
 
 
+def _scene_order(items: list[dict]) -> list[dict]:
+    """Ordena os vídeos pela `ordem` da cena; recusa ordem duplicada, buraco ou mais de uma sequência."""
+    with_order = [it for it in items if "ordem" in it]
+    if not with_order:
+        return items  # fila antiga, sem campo de ordem: vale a ordem da fila
+    if len(with_order) != len(items):
+        raise ValueError("fila mistura vídeos com e sem `ordem`; não dá para montar em ordem de cena")
+    sequences = {it.get("sequencia_id", "") for it in items}
+    if len(sequences) > 1:
+        raise ValueError(f"fila com mais de uma sequencia_id ({', '.join(sorted(sequences))}); monte uma por vez")
+    ordered = sorted(items, key=lambda it: it["ordem"])
+    orders = [it["ordem"] for it in ordered]
+    duplicated = sorted({o for o in orders if orders.count(o) > 1})
+    if duplicated:
+        raise ValueError(f"ordem de cena duplicada: {duplicated}")
+    missing = sorted(set(range(orders[0], orders[-1] + 1)) - set(orders))
+    if missing:
+        raise ValueError(f"buraco na sequência de cenas: falta ordem {missing}")
+    return ordered
+
+
 def assemble(fila_path: str | Path, directory: str | Path, out: str | Path) -> dict:
     fila_path, directory, out = Path(fila_path), Path(directory), Path(out)
     fila = load_fila(fila_path)
-    items = [it for it in fila["itens"] if it["tipo"] != "imagem"]
+    items = _scene_order([it for it in fila["itens"] if it["tipo"] != "imagem"])
     if not items:
         raise ValueError("fila sem itens de vídeo")
     entries = []
@@ -283,8 +323,15 @@ def assemble(fila_path: str | Path, directory: str | Path, out: str | Path) -> d
         normalized = []
         for n, (clip, start, end) in enumerate(entries):
             target = Path(tmp) / f"{n:04d}.mp4"
-            _run([ffmpeg_path(), "-v", "error", "-ss", str(start), "-i", str(clip),
-                  "-t", str(end - start), "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            # Áudio uniforme (AAC 48 kHz estéreo) em todo trecho: a fala do Flow vai junto; clipe sem
+            # trilha recebe silêncio da mesma duração para o concat não perder nem dessincronizar o áudio.
+            if has_audio(clip):
+                audio_in, audio_map = [], ["-map", "0:a:0", "-af", "apad"]
+            else:
+                audio_in, audio_map = ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"], ["-map", "1:a:0"]
+            _run([ffmpeg_path(), "-v", "error", "-ss", str(start), "-i", str(clip), *audio_in,
+                  "-t", str(end - start), "-map", "0:v:0", *audio_map,
+                  "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2",
                   "-y", str(target)])
             normalized.append(target)
         concat = Path(tmp) / "concat.txt"
@@ -295,4 +342,8 @@ def assemble(fila_path: str | Path, directory: str | Path, out: str | Path) -> d
     if abs(actual - expected_duration) > 0.5:
         out.unlink(missing_ok=True)
         raise ValueError(f"montagem com duração divergente: {actual:.2f}s vs {expected_duration:.2f}s")
-    return {"arquivo": str(out), "itens": len(entries), "duracao_s": actual}
+    if not has_audio(out):
+        out.unlink(missing_ok=True)
+        raise ValueError("montagem sem trilha de áudio")
+    return {"arquivo": str(out), "itens": len(entries), "duracao_s": actual,
+            "ordem": [item["id"] for item in items]}
