@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0A1628">
+<meta name="description" content="Boa Meu Guapo! Academia de Goleiros — treinamento especializado em Curitiba e São José dos Pinhais. Do iniciante ao alto rendimento.">
+<title>Boa Meu Guapo! — Academia de Goleiros</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===== DESIGN TOKENS ===== */
+:root {
+  --bg-deep: #0A1628;
+  --bg-surface: #0F2440;
+  --bg-elevated: #162D50;
+  --accent: #E50914;
+  --accent-dim: rgba(229, 9, 20, 0.10);
+  --accent-glow: rgba(229, 9, 20, 0.30);
+  --text-primary: #FFFFFF;
+  --text-secondary: #B0C4DE;
+  --text-muted: #6B7F99;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(229, 9, 20, 0.30);
+  --font-display: 'Syne', sans-serif;
+  --font-body: 'Outfit', sans-serif;
+  --header-h: 80px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ===== RESET ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+img, video { display: block; max-width: 100%; }
+a { color: inherit; text-decoration: none; }
+
+/* ===== ACCESSIBILITY ===== */
+.skip {
+  position: absolute; left: 1rem; top: -5rem;
+  background: var(--accent); color: var(--bg-deep); padding: 0.8rem 1.2rem;
+  z-index: 100; font-weight: 700; text-decoration: none;
+  transition: top 0.2s;
+}
+.skip:focus { top: 1rem; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* ===== TYPOGRAPHY ===== */
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  line-height: 0.92;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+h1 { font-size: clamp(3.2rem, 9vw, 7.5rem); }
+h2 { font-size: clamp(2.2rem, 5.5vw, 4.5rem); margin-bottom: 1rem; }
+h3 { font-size: clamp(1.3rem, 2.5vw, 1.75rem); letter-spacing: -0.01em; }
+p { color: var(--text-secondary); font-size: clamp(0.95rem, 1.1vw, 1.05rem); max-width: 60ch; font-weight: 300; }
+.accent { color: var(--accent); }
+.section-label {
+  display: inline-flex; align-items: center; gap: 0.75rem;
+  color: var(--accent); font-family: var(--font-body);
+  font-size: 0.7rem; font-weight: 600;
+  letter-spacing: 0.2em; text-transform: uppercase;
+  margin-bottom: 1.25rem;
+}
+.section-label::before {
+  content: ''; width: 2rem; height: 1px; background: var(--accent);
+}
+
+/* ===== HEADER ===== */
+.header {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+  height: var(--header-h);
+  padding: 0 max(1.5rem, env(safe-area-inset-left)) 0 max(1.5rem, env(safe-area-inset-right));
+  display: flex; align-items: center; justify-content: space-between;
+  background: rgba(10, 22, 40, 0.3);
+  backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border-bottom: 1px solid transparent;
+  transition: background 0.4s var(--ease-out), border-color 0.4s;
+}
+.header.scrolled {
+  background: rgba(10, 22, 40, 0.95);
+  border-bottom-color: var(--border);
+}
+
+.brand {
+  display: flex; align-items: center; gap: 0.75rem;
+  text-decoration: none; color: var(--text-primary);
+}
+.brand-icon {
+  width: 44px; height: 44px;
+  border: 1.5px solid var(--accent); border-radius: 50%;
+  display: grid; place-items: center;
+  font-family: var(--font-display); font-size: 1.5rem; font-weight: 800;
+  color: var(--accent);
+  transition: background 0.3s, color 0.3s;
+}
+.brand:hover .brand-icon {
+  background: var(--accent); color: var(--bg-deep);
+}
+.brand-text {
+  font-family: var(--font-display); font-weight: 700;
+  font-size: 1.25rem; line-height: 0.85; letter-spacing: -0.01em;
+}
+.brand-text small {
+  display: block; font-family: var(--font-body);
+  font-size: 0.5rem; font-weight: 500; letter-spacing: 0.2em;
+  margin-top: 4px; opacity: 0.6; text-transform: uppercase;
+}
+
+.nav { display: flex; gap: 2.5rem; }
+.nav a {
+  color: var(--text-secondary); text-decoration: none;
+  font-size: 0.7rem; font-weight: 500;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  transition: color 0.25s;
+  position: relative;
+}
+.nav a::after {
+  content: ''; position: absolute; bottom: -4px; left: 0;
+  width: 0; height: 1px; background: var(--accent);
+  transition: width 0.3s var(--ease-out);
+}
+.nav a:hover { color: var(--text-primary); }
+.nav a:hover::after { width: 100%; }
+
+.header-cta {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  background: transparent; color: var(--accent);
+  padding: 0.7rem 1.5rem;
+  font-family: var(--font-display); font-size: 0.85rem; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  text-decoration: none;
+  border: 1px solid var(--accent);
+  transition: all 0.3s var(--ease-out);
+}
+.header-cta:hover {
+  background: var(--accent); color: var(--bg-deep);
+  box-shadow: 0 0 24px var(--accent-glow);
+}
+
+.menu-button {
+  display: none; background: none; border: none; cursor: pointer;
+  padding: 0.5rem; min-width: 48px; min-height: 48px;
+  align-items: center; justify-content: center; flex-direction: column; gap: 5px;
+}
+.menu-button span {
+  display: block; width: 22px; height: 1.5px; background: var(--text-primary);
+  transition: transform 0.3s var(--ease-out), opacity 0.3s;
+}
+
+.mobile-nav {
+  display: none; position: fixed;
+  top: var(--header-h); left: 0; right: 0; bottom: 0;
+  background: var(--bg-deep); z-index: 49;
+  padding: 2rem max(1.5rem, env(safe-area-inset-left));
+  flex-direction: column;
+}
+.mobile-nav a {
+  display: flex; align-items: center; min-height: 56px;
+  color: var(--text-primary); text-decoration: none;
+  font-family: var(--font-display); font-size: 1.75rem; font-weight: 700;
+  text-transform: uppercase; border-bottom: 1px solid var(--border);
+  transition: color 0.2s;
+}
+.mobile-nav a:hover { color: var(--accent); }
+
+/* ===== HERO ===== */
+.hero {
+  position: relative; min-height: 65vh;
+  display: flex; align-items: center;
+  padding: calc(var(--header-h) + 2rem) max(1.5rem, env(safe-area-inset-left)) 3rem max(1.5rem, env(safe-area-inset-right));
+  overflow: hidden; isolation: isolate;
+}
+.hero-image {
+  position: absolute; inset: 0; z-index: -2;
+  background: url('../repo-source/assets/hero-treino.webp') center 30% / cover no-repeat;
+}
+.hero-shade {
+  position: absolute; inset: 0; z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(10,22,40,0.7) 0%, rgba(10,22,40,0.3) 35%, rgba(10,22,40,0.8) 75%, var(--bg-deep) 100%),
+    linear-gradient(90deg, rgba(10,22,40,0.97) 0%, rgba(10,22,40,0.7) 50%, rgba(10,22,40,0.15) 100%);
+}
+.hero-content { position: relative; max-width: 820px; }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 0.75rem;
+  color: var(--accent); font-family: var(--font-body);
+  font-size: 0.7rem; font-weight: 600;
+  letter-spacing: 0.2em; text-transform: uppercase;
+  margin-bottom: 1.75rem;
+  opacity: 0; animation: fadeSlideUp 0.8s var(--ease-out) 0.2s forwards;
+}
+.eyebrow::before {
+  content: ''; width: 2.5rem; height: 1px; background: var(--accent);
+}
+.hero h1 {
+  margin-bottom: 1.5rem;
+  opacity: 0; animation: fadeSlideUp 0.8s var(--ease-out) 0.4s forwards;
+}
+.hero h1 .accent {
+  display: inline-block;
+  background: linear-gradient(135deg, var(--accent) 0%, #FFE066 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.hero p {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: clamp(1rem, 1.3vw, 1.15rem);
+  line-height: 1.75; margin-bottom: 2.75rem; max-width: 520px;
+  opacity: 0; animation: fadeSlideUp 0.8s var(--ease-out) 0.6s forwards;
+}
+.hero-actions {
+  display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
+  opacity: 0; animation: fadeSlideUp 0.8s var(--ease-out) 0.8s forwards;
+}
+
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== BUTTONS ===== */
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.75rem;
+  min-height: 56px; padding: 0 2.25rem;
+  font-family: var(--font-display); font-size: 0.95rem; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  text-decoration: none; border: none; cursor: pointer;
+  transition: all 0.3s var(--ease-out);
+  position: relative; overflow: hidden;
+}
+.button span { font-size: 1.1rem; transition: transform 0.3s var(--ease-out); }
+.button:hover span { transform: translateX(3px); }
+
+.primary {
+  background: var(--accent); color: var(--bg-deep);
+}
+.primary:hover {
+  background: #FF1F2D;
+  box-shadow: 0 0 32px var(--accent-glow);
+  transform: translateY(-2px);
+}
+.dark {
+  background: var(--text-primary); color: var(--bg-deep);
+}
+.dark:hover {
+  background: #fff;
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+.outline {
+  background: transparent; color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+.outline:hover {
+  border-color: var(--accent); color: var(--accent);
+  transform: translateY(-2px);
+}
+
+/* ===== SECTIONS ===== */
+.section {
+  padding: clamp(5rem, 10vw, 8rem) max(1.5rem, env(safe-area-inset-left));
+}
+.section.alt { background: var(--bg-surface); }
+.section-header {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  gap: 2rem; margin-bottom: clamp(3rem, 5vw, 4.5rem);
+}
+.section-header p { text-align: right; max-width: 320px; }
+
+/* ===== BENEFITS ===== */
+.benefits-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+.benefit-card {
+  background: var(--bg-deep);
+  padding: 2.5rem 1.75rem;
+  display: flex; flex-direction: column; gap: 1.25rem;
+  min-height: 320px;
+  transition: all 0.4s var(--ease-out);
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.benefit-card::before {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, var(--accent-dim) 0%, transparent 60%);
+  opacity: 0; transition: opacity 0.4s;
+}
+.benefit-card:hover { transform: translateY(-4px); }
+.benefit-card:hover::before { opacity: 1; }
+.benefit-icon {
+  font-size: 1.75rem; line-height: 1; color: var(--accent);
+  width: 52px; height: 52px;
+  display: grid; place-items: center;
+  border: 1px solid var(--border-hover);
+  position: relative; z-index: 1;
+}
+.benefit-card h3 { font-size: 1.2rem; margin: 0; line-height: 1.15; position: relative; z-index: 1; }
+.benefit-card p { font-size: 0.85rem; line-height: 1.65; color: var(--text-secondary); margin: 0; position: relative; z-index: 1; font-weight: 300; }
+
+/* ===== PROGRAMS ===== */
+.programs-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;
+}
+.program-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  padding: 2.75rem 2rem;
+  display: flex; flex-direction: column; gap: 1rem;
+  position: relative; overflow: hidden;
+  transition: all 0.4s var(--ease-out);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
+.program-card::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+  height: 2px; background: var(--accent);
+  transform: scaleX(0); transform-origin: left;
+  transition: transform 0.4s var(--ease-out);
+}
+.program-card:hover { transform: translateY(-4px); border-color: var(--border-hover); }
+.program-card:hover::after { transform: scaleX(1); }
+.program-card.featured {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(229,9,20,0.06) 0%, var(--bg-surface) 100%);
+}
+.program-card.featured::after { transform: scaleX(1); }
+.program-tag {
+  position: absolute; top: 1.25rem; right: 1.25rem;
+  background: var(--accent); color: var(--bg-deep);
+  font-size: 0.55rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 0.35rem 0.7rem;
+}
+.program-number {
+  font-family: var(--font-display); font-size: 4rem; font-weight: 800;
+  color: rgba(229, 9, 20, 0.05); line-height: 1;
+  position: absolute; top: 0.5rem; left: 1.25rem;
+}
+.program-card h3 { margin-top: 1.75rem; font-size: 1.6rem; }
+.program-card p { font-size: 0.875rem; line-height: 1.65; font-weight: 300; }
+.program-card .button { margin-top: auto; width: 100%; min-height: 48px; font-size: 0.8rem; }
+
+/* ===== TESTIMONIALS ===== */
+.testimonials-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;
+}
+.testimonial {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  padding: 2.25rem;
+  display: flex; flex-direction: column; gap: 1.5rem;
+  position: relative;
+  transition: border-color 0.3s, transform 0.3s var(--ease-out), box-shadow 0.3s;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+.testimonial:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+.testimonial:hover { border-color: var(--accent); }
+.testimonial-quote {
+  font-size: 1rem; line-height: 1.75; color: rgba(255,255,255,0.88);
+  font-style: italic; font-weight: 300;
+  position: relative; padding-left: 1.5rem;
+}
+.testimonial-quote::before {
+  content: '\201C'; position: absolute; left: 0; top: -0.25rem;
+  font-family: var(--font-display); font-size: 2.5rem; font-weight: 800;
+  color: var(--accent); line-height: 1; font-style: normal;
+}
+.testimonial-author {
+  display: flex; align-items: center; gap: 0.875rem;
+  padding-top: 1rem; border-top: 1px solid var(--border);
+}
+.testimonial-avatar {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  display: grid; place-items: center;
+  font-family: var(--font-display); font-weight: 700; font-size: 0.85rem;
+  color: var(--accent);
+}
+.testimonial-name {
+  font-family: var(--font-display); font-size: 0.9rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.testimonial-role { font-size: 0.7rem; color: var(--text-muted); font-weight: 400; margin-top: 2px; }
+
+/* ===== BENTO GALLERY ===== */
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: 280px 280px;
+  gap: 0.5rem;
+}
+.gallery-grid figure {
+  position: relative; margin: 0; overflow: hidden;
+  background: var(--bg-surface);
+}
+/* Bento layout: first item spans 2 cols + 2 rows, others fill around */
+.gallery-grid figure:nth-child(1) { grid-column: 1 / 3; grid-row: 1 / 3; }
+.gallery-grid figure:nth-child(2) { grid-column: 3 / 4; }
+.gallery-grid figure:nth-child(3) { grid-column: 4 / 5; }
+.gallery-grid figure:nth-child(4) { grid-column: 3 / 4; }
+.gallery-grid figure:nth-child(5) { grid-column: 4 / 5; }
+.gallery-grid figure:nth-child(6) { display: none; } /* hide 6th on desktop bento */
+
+.gallery-video video {
+  width: 100%; height: 100%; object-fit: cover;
+  transition: transform 0.5s var(--ease-out);
+}
+.gallery-video:hover video { transform: scale(1.05); }
+.gallery-grid figcaption {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  padding: 3rem 1.25rem 1rem;
+  background: linear-gradient(transparent, rgba(10,22,40,0.95));
+  font-family: var(--font-display); font-size: 0.75rem; font-weight: 700;
+  letter-spacing: 0.15em; text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* ===== FINAL CTA ===== */
+.final-cta {
+  background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-deep) 100%);
+  padding: clamp(5rem, 10vw, 7rem) max(1.5rem, env(safe-area-inset-left));
+  text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 1.75rem;
+  position: relative; overflow: hidden;
+}
+.final-cta::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, var(--accent-dim) 0%, transparent 70%);
+  pointer-events: none;
+}
+.final-cta h2 {
+  color: var(--text-primary); margin: 0;
+  position: relative; z-index: 1;
+}
+.final-cta p {
+  color: var(--text-secondary); text-align: center; max-width: 480px;
+  position: relative; z-index: 1;
+}
+.final-cta .dark {
+  min-height: 64px; padding: 0 3rem; font-size: 1rem;
+  position: relative; z-index: 1;
+}
+
+/* ===== FOOTER ===== */
+footer {
+  background: var(--bg-deep);
+  border-top: 1px solid var(--border);
+  padding: 3rem max(1.5rem, env(safe-area-inset-left));
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1.5rem; flex-wrap: wrap;
+  font-size: 0.65rem; color: var(--text-muted);
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+footer a:not(.brand) {
+  color: var(--text-muted); text-decoration: none;
+  font-weight: 500; min-height: 44px;
+  display: inline-flex; align-items: center;
+  transition: color 0.25s;
+}
+footer a:not(.brand):hover { color: var(--accent); }
+.footer-social { display: flex; gap: 1.5rem; }
+
+/* ===== REVEAL ANIMATION ===== */
+.reveal-pending {
+  opacity: 0; transform: translateY(32px);
+  transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out);
+}
+.revealed { opacity: 1; transform: translateY(0); }
+
+/* ===== WHATSAPP FLOAT ===== */
+.whatsapp-float {
+  position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 60;
+  width: 60px; height: 60px; border-radius: 50%;
+  background: #25D366; display: grid; place-items: center;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  transition: transform 0.3s var(--ease-spring), box-shadow 0.3s;
+}
+.whatsapp-float:hover {
+  transform: scale(1.12);
+  box-shadow: 0 6px 24px rgba(37, 211, 102, 0.35);
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 1024px) {
+  .benefits-grid { grid-template-columns: repeat(2, 1fr); }
+  .programs-grid { grid-template-columns: repeat(2, 1fr); }
+  .programs-grid .program-card:last-child { grid-column: 1 / -1; }
+  .testimonials-grid { grid-template-columns: repeat(2, 1fr); }
+  .testimonials-grid .testimonial:last-child { grid-column: 1 / -1; }
+  .gallery-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 260px 260px 260px;
+  }
+  .gallery-grid figure:nth-child(1) { grid-column: 1 / 3; grid-row: 1 / 2; }
+  .gallery-grid figure:nth-child(2) { grid-column: 1 / 2; }
+  .gallery-grid figure:nth-child(3) { grid-column: 2 / 3; }
+  .gallery-grid figure:nth-child(4) { grid-column: 1 / 2; }
+  .gallery-grid figure:nth-child(5) { grid-column: 2 / 3; }
+  .gallery-grid figure:nth-child(6) { display: block; grid-column: 1 / 3; }
+}
+
+@media (max-width: 900px) {
+  .nav, .header-cta { display: none; }
+  .menu-button { display: flex; }
+  .mobile-nav:not([hidden]) { display: flex; }
+  .section-header { flex-direction: column; align-items: flex-start; gap: 1rem; }
+  .section-header p { text-align: left; max-width: 100%; }
+  .programs-grid { grid-template-columns: 1fr; }
+  .programs-grid .program-card:last-child { grid-column: auto; }
+  .testimonials-grid { grid-template-columns: 1fr; }
+  .testimonials-grid .testimonial:last-child { grid-column: auto; }
+  .gallery-grid { grid-template-columns: 1fr 1fr; grid-template-rows: auto; }
+  .gallery-grid figure:nth-child(1) { grid-column: 1 / 3; grid-row: auto; }
+  .gallery-grid figure:nth-child(n) { grid-column: auto; }
+  .gallery-grid figure:nth-child(1) { grid-column: 1 / 3; }
+  .gallery-grid figure { min-height: 220px; }
+}
+
+@media (max-width: 650px) {
+  :root { --header-h: 64px; }
+  .header { padding: 0 max(1rem, env(safe-area-inset-left)); }
+  .brand-icon { width: 38px; height: 38px; font-size: 1.2rem; }
+  .brand-text { font-size: 1rem; }
+  .hero {
+    min-height: 70vh; align-items: flex-end; padding-bottom: 2.5rem;
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+  .hero h1 { font-size: clamp(2.8rem, 12vw, 4rem); }
+  .hero p { font-size: 0.9rem; max-width: 100%; }
+  .hero-actions { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+  .hero-actions .button { width: 100%; justify-content: center; }
+  .section { padding: clamp(3.5rem, 8vw, 5rem) max(1rem, env(safe-area-inset-left)); }
+  h2 { font-size: clamp(1.8rem, 8vw, 2.75rem); }
+  .benefits-grid { grid-template-columns: 1fr; }
+  .benefit-card { min-height: auto; }
+  .gallery-grid { grid-template-columns: 1fr; }
+  .gallery-grid figure:nth-child(1) { grid-column: auto; }
+  .gallery-grid figure { min-height: 200px; }
+  .final-cta { padding: clamp(3rem, 6vw, 4rem) max(1rem, env(safe-area-inset-left)); }
+  .final-cta .dark { width: 100%; }
+  footer {
+    flex-direction: column; align-items: flex-start; gap: 1.5rem;
+    padding: 2rem max(1rem, env(safe-area-inset-left));
+  }
+  .whatsapp-float { bottom: 1rem; right: 1rem; width: 54px; height: 54px; }
+  .whatsapp-float svg { width: 26px; height: 26px; }
+}
+
+@media (max-width: 390px) {
+  .hero h1 { font-size: clamp(2.2rem, 11vw, 3rem); }
+  h2 { font-size: clamp(1.6rem, 7vw, 2.25rem); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  .reveal-pending { opacity: 1; transform: none; }
+}
+
+::selection { background: var(--accent); color: var(--bg-deep); }
+</style>
+</head>
+<body>
+<a class="skip" href="#conteudo">Pular para o conteúdo</a>
+
+<!-- HEADER -->
+<header id="inicio" class="header">
+  <a class="brand" href="#inicio" aria-label="Boa Meu Guapo, início">
+    <span class="brand-icon">B!</span>
+    <span class="brand-text">BOA MEU<br>GUAPO!<small>ACADEMIA DE GOLEIROS</small></span>
+  </a>
+  <nav class="nav" aria-label="Navegação principal">
+    <a href="#diferenciais">Diferenciais</a>
+    <a href="#programas">Programas</a>
+    <a href="#depoimentos">Depoimentos</a>
+    <a href="#galeria">Galeria</a>
+  </nav>
+  <a class="header-cta" href="https://wa.me/5541991145945?text=Ol%C3%A1%2C%20Jaques%21%20Gostaria%20de%20agendar%20uma%20aula%20experimental%20na%20Boa%20Meu%20Guapo%21" target="_blank" rel="noopener noreferrer">AGENDAR AULA</a>
+  <button class="menu-button" aria-label="Abrir menu" aria-expanded="false" aria-controls="menu-mobile">
+    <span></span><span></span><span></span>
+  </button>
+</header>
+
+<nav id="menu-mobile" class="mobile-nav" aria-label="Navegação móvel" hidden>
+  <a href="#diferenciais">Diferenciais</a>
+  <a href="#programas">Programas</a>
+  <a href="#depoimentos">Depoimentos</a>
+  <a href="#galeria">Galeria</a>
+  <a href="https://www.instagram.com/boameuguapo/" target="_blank" rel="noopener noreferrer">Instagram ↗</a>
+  <a href="https://wa.me/5541991145945?text=Ol%C3%A1%2C%20Jaques%21%20Gostaria%20de%20agendar%20uma%20aula%20experimental%20na%20Boa%20Meu%20Guapo%21" target="_blank" rel="noopener noreferrer">Agendar Aula ↗</a>
+</nav>
+
+<main id="conteudo">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-image" role="img" aria-label="Goleiro em ação durante treino"></div>
+    <div class="hero-shade"></div>
+    <div class="hero-content">
+      <div class="eyebrow">ACADEMIA DE GOLEIROS · CURITIBA E REGIÃO</div>
+      <h1>NASCEU PARA<br><span class="accent">DEFENDER.</span></h1>
+      <p>O centro de treinamento especializado para quem vive a linha de fundo. Do iniciante ao alto rendimento, mude sua mentalidade e domine a área.</p>
+      <div class="hero-actions">
+        <a class="button primary" href="https://wa.me/5541991145945?text=Ol%C3%A1%2C%20Jaques%21%20Gostaria%20de%20agendar%20uma%20aula%20experimental%20na%20Boa%20Meu%20Guapo%21" target="_blank" rel="noopener noreferrer">QUERO TREINAR AGORA <span>↗</span></a>
+        <a class="button outline" href="#diferenciais">CONHEÇA A ACADEMIA ↓</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- DIFERENCIAIS -->
+  <section id="diferenciais" class="section alt">
+    <div class="section-header">
+      <div>
+        <div class="section-label">POR QUE A BOA MEU GUAPO?</div>
+        <h2>MUITO ALÉM DA<br><span class="accent">LINHA DO GOL</span></h2>
+      </div>
+      <p>Não ensinamos apenas a defender. Formamos goleiros completos com mentalidade, técnica e inteligência de jogo.</p>
+    </div>
+    <div class="benefits-grid">
+      <article class="benefit-card">
+        <div class="benefit-icon">🧠</div>
+        <h3>MENTALIDADE FORTE</h3>
+        <p>Treino psicológico integrado para desenvolver resiliência, foco e tomada de decisão sob pressão dentro das quatro linhas.</p>
+      </article>
+      <article class="benefit-card">
+        <div class="benefit-icon">⚡</div>
+        <h3>TÉCNICA APURADA</h3>
+        <p>Fundamentos trabalhados com repetição inteligente: pegada, queda, reposição e leitura de trajetória com metodologia própria.</p>
+      </article>
+      <article class="benefit-card">
+        <div class="benefit-icon">🎯</div>
+        <h3>METODOLOGIA EXCLUSIVA</h3>
+        <p>Sistema de treino desenvolvido desde 2020, adaptado à realidade do goleiro brasileiro com progressão pedagógica clara.</p>
+      </article>
+      <article class="benefit-card">
+        <div class="benefit-icon">🤝</div>
+        <h3>COMUNIDADE DE GOLEIROS</h3>
+        <p>Ambiente onde goleiros de todas as idades trocam experiência, se motivam e crescem juntos dentro e fora de campo.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- PROGRAMAS -->
+  <section id="programas" class="section">
+    <div class="section-header">
+      <div>
+        <div class="section-label">NOSSOS PROGRAMAS</div>
+        <h2>ENCONTRE SEU<br><span class="accent">NÍVEL IDEAL</span></h2>
+      </div>
+      <p>Do primeiro mergulho à alta performance. Escolha o programa que combina com seu momento.</p>
+    </div>
+    <div class="programs-grid">
+      <article class="program-card">
+        <span class="program-number">01</span>
+        <h3>BASE & INICIANTES</h3>
+        <p>Para jovens e iniciantes que buscam aprender os fundamentos corretos da posição. Técnica, segurança e paixão pelo gol.</p>
+        <a class="button outline" href="https://wa.me/5541991145945?text=Ol%C3%A1%2C%20Jaques%21%20Quero%20saber%20mais%20sobre%20o%20programa%20Base%20%26%20Iniciantes." target="_blank" rel="noopener noreferrer">SAIBA MAIS</a>
+      </article>
+      <article class="program-card featured">
+        <span class="program-tag">MAIS PROCURADO</span>
+        <span class="program-number">02</span>
+        <h3>ALTO RENDIMENTO</h3>
+        <p>Treinos intensivos para goleiros amadores avançados e atletas federados. Intensidade, leitura de jogo e reação sob pressão.</p>
+        <a class="button primary" href="https://wa.me/5541991145945?text=Ol%C3%A1%2C%20Jaques%21%20Quero%20saber%20mais%20sobre%20o%20Alto%20Rendimento." target="_blank" rel="noopener noreferrer">QUERO ESTE</a>
+      </article>
+      <article class="program-card">
+        <span class="program-number">03</span>
+        <h3>PERSONAL KEEPER</h3>
+        <p>Aulas individuais e personalizadas para foco total na sua evolução. Análise detalhada e plano de desenvolvimento exclusivo.</p>
+        <a class="button outline" href="https://wa.me/5541991145945?text=Ol%C3%A1%2C%20Jaques%21%20Quero%20saber%20mais%20sobre%20o%20Personal%20Keeper." target="_blank" rel="noopener noreferrer">SAIBA MAIS</a>
+      </article>
+    </div>
+  </section>
+
+  <!-- DEPOIMENTOS -->
+  <section id="depoimentos" class="section alt">
+    <div class="section-header">
+      <div>
+        <div class="section-label">QUEM DEFENDE, CONFIA</div>
+        <h2>HISTÓRIAS DE<br><span class="accent">EVOLUÇÃO REAL</span></h2>
+      </div>
+      <p>Goleiros que transformaram seu jogo dentro da academia. Resultados reais, depoimentos reais.</p>
+    </div>
+    <div class="testimonials-grid">
+      <article class="testimonial">
+        <p class="testimonial-quote">Minha confiança no gol mudou completamente. A metodologia de treino me fez entender a posição de outra forma.</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar" role="img" aria-label="Foto do aluno Lucas">LF</div>
+          <div>
+            <div class="testimonial-name">LUCAS FERREIRA</div>
+            <div class="testimonial-role">Goleiro Sub-17 · Alto Rendimento</div>
+          </div>
+        </div>
+      </article>
+      <article class="testimonial">
+        <p class="testimonial-quote">Comecei do zero aos 14 anos. Hoje sou titular no meu time e atribuo tudo à base que construí na Boa Meu Guapo.</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar" role="img" aria-label="Foto do aluno Pedro">PH</div>
+          <div>
+            <div class="testimonial-name">PEDRO HENRIQUE</div>
+            <div class="testimonial-role">Goleiro Federado · Base → Alto Rendimento</div>
+          </div>
+        </div>
+      </article>
+      <article class="testimonial">
+        <p class="testimonial-quote">O Personal Keeper foi divisor de águas. Em 3 meses corrigi vícios técnicos que carregava há anos.</p>
+        <div class="testimonial-author">
+          <div class="testimonial-avatar" role="img" aria-label="Foto do aluno Rafael">RC</div>
+          <div>
+            <div class="testimonial-name">RAFAEL COSTA</div>
+            <div class="testimonial-role">Goleiro Amador · Personal Keeper</div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- GALERIA -->
+  <section id="galeria" class="section">
+    <div class="section-header">
+      <div>
+        <div class="section-label">DENTRO DO CAMPO</div>
+        <h2>TREINO QUE VIRA<br><span class="accent">DEFESA</span></h2>
+      </div>
+      <p>Momentos reais da academia: técnica, reação, deslocamento e o trabalho diário de quem escolheu o gol.</p>
+    </div>
+    <div class="gallery-grid">
+      <figure class="gallery-video">
+        <video src="../repo-source/assets/video-metodologia.mp4" poster="../repo-source/assets/treino-tecnica.webp" muted loop playsinline preload="none" aria-label="Metodologia de treino"></video>
+        <figcaption>METODOLOGIA</figcaption>
+      </figure>
+      <figure class="gallery-video">
+        <video src="../repo-source/assets/video-reacao.mp4" poster="../repo-source/assets/treino-reacao.webp" muted loop playsinline preload="none" aria-label="Velocidade de reação"></video>
+        <figcaption>REAÇÃO</figcaption>
+      </figure>
+      <figure class="gallery-video">
+        <video src="../repo-source/assets/video-explosao-kids.mp4" poster="../repo-source/assets/treino-equipe.webp" muted loop playsinline preload="none" aria-label="Explosão com guapos kids"></video>
+        <figcaption>KIDS</figcaption>
+      </figure>
+      <figure class="gallery-video">
+        <video src="../repo-source/assets/video-treino-quarta.mp4" poster="../repo-source/assets/treino-campo.webp" muted loop playsinline preload="none" aria-label="Treino de quarta"></video>
+        <figcaption>TREINO</figcaption>
+      </figure>
+      <figure class="gallery-video">
+        <video src="../repo-source/assets/video-desde2020.mp4" poster="../repo-source/assets/academia-original.webp" muted loop playsinline preload="none" aria-label="Academia desde 2020"></video>
+        <figcaption>ACADEMIA</figcaption>
+      </figure>
+      <figure class="gallery-video">
+        <video src="../repo-source/assets/video-performance.mp4" poster="../repo-source/assets/treino-tecnica.webp" muted loop playsinline preload="none" aria-label="Performance debaixo das traves"></video>
+        <figcaption>PERFORMANCE</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- FINAL CTA -->
+  <section class="final-cta">
+    <h2>PRONTO PARA SE TORNAR<br>INVENCÍVEL?</h2>
+    <p>Agende sua aula experimental e descubra o que significa treinar como goleiro de verdade. Treinos segundas e sextas no Clube Aliança, São José dos Pinhais.</p>
+    <a class="button dark" href="https://wa.me/5541991145945?text=Ol%C3%A1%2C%20Jaques%21%20Gostaria%20de%20agendar%20uma%20aula%20experimental%20na%20Boa%20Meu%20Guapo%21" target="_blank" rel="noopener noreferrer">FALAR COM UM CONSULTOR VIA WHATSAPP <span>↗</span></a>
+  </section>
+
+</main>
+
+<!-- FOOTER -->
+<footer>
+  <a class="brand" href="#inicio" aria-label="Boa Meu Guapo, início">
+    <span class="brand-icon">B!</span>
+    <span class="brand-text">BOA MEU<br>GUAPO!<small>ACADEMIA DE GOLEIROS</small></span>
+  </a>
+  <div>
+    <div>TREINOS: SEGUNDAS E SEXTAS</div>
+    <div>CLUBE ALIANÇA · SÃO JOSÉ DOS PINHAIS</div>
+  </div>
+  <div class="footer-social">
+    <a href="https://www.instagram.com/boameuguapo/" target="_blank" rel="noopener noreferrer">INSTAGRAM ↗</a>
+    <a href="https://wa.me/5541991145945?text=Ol%C3%A1%2C%20Jaques%21%20Gostaria%20de%20agendar%20uma%20aula%20experimental%20na%20Boa%20Meu%20Guapo%21" target="_blank" rel="noopener noreferrer">WHATSAPP ↗</a>
+  </div>
+  <span>© <span id="year"></span> BOA MEU GUAPO! TODOS OS DIREITOS RESERVADOS.</span>
+</footer>
+
+<!-- WHATSAPP FLOAT -->
+<a class="whatsapp-float" href="https://wa.me/5541991145945?text=Ol%C3%A1%2C%20Jaques%21%20Gostaria%20de%20agendar%20uma%20aula%20experimental%20na%20Boa%20Meu%20Guapo%21" target="_blank" rel="noopener noreferrer" aria-label="Falar no WhatsApp">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+</a>
+
+<script>
+const menuButton = document.querySelector('.menu-button');
+const mobileNav = document.querySelector('.mobile-nav');
+const header = document.querySelector('.header');
+
+const closeMenu = () => {
+  mobileNav.hidden = true;
+  menuButton.setAttribute('aria-expanded', 'false');
+  menuButton.setAttribute('aria-label', 'Abrir menu');
+  document.body.style.overflow = '';
+};
+
+const openMenu = () => {
+  mobileNav.hidden = false;
+  menuButton.setAttribute('aria-expanded', 'true');
+  menuButton.setAttribute('aria-label', 'Fechar menu');
+  document.body.style.overflow = 'hidden';
+};
+
+if (menuButton && mobileNav) {
+  menuButton.addEventListener('click', () => {
+    const isOpen = menuButton.getAttribute('aria-expanded') === 'true';
+    isOpen ? closeMenu() : openMenu();
+  });
+
+  mobileNav.querySelectorAll('a').forEach(link => {
+    link.addEventListener('click', closeMenu);
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !mobileNav.hidden) {
+      closeMenu();
+      menuButton.focus();
+    }
+  });
+
+  document.addEventListener('click', event => {
+    if (!mobileNav.hidden && !mobileNav.contains(event.target) && !menuButton.contains(event.target)) {
+      closeMenu();
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 900 && !mobileNav.hidden) closeMenu();
+  }, { passive: true });
+}
+
+// Header background on scroll
+const onScroll = () => {
+  if (window.scrollY > 60) {
+    header.classList.add('scrolled');
+  } else {
+    header.classList.remove('scrolled');
+  }
+};
+window.addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+
+// Smooth scroll for anchor links
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+  anchor.addEventListener('click', function (e) {
+    const targetId = this.getAttribute('href');
+    if (targetId === '#') return;
+    const target = document.querySelector(targetId);
+    if (target) {
+      e.preventDefault();
+      const headerHeight = header ? header.offsetHeight : 0;
+      const top = target.getBoundingClientRect().top + window.scrollY - headerHeight - 16;
+      window.scrollTo({ top, behavior: 'smooth' });
+    }
+  });
+});
+
+// Year in footer
+const yearEl = document.querySelector('#year');
+if (yearEl) yearEl.textContent = new Date().getFullYear();
+
+// Reveal on scroll
+const revealTargets = document.querySelectorAll('.section, .hero-content');
+if ('IntersectionObserver' in window && revealTargets.length) {
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('revealed');
+        io.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+  revealTargets.forEach(el => {
+    el.classList.add('reveal-pending');
+    io.observe(el);
+  });
+}
+
+// Gallery video hover-to-play
+document.querySelectorAll('.gallery-video video').forEach(video => {
+  const figure = video.closest('figure');
+  if (!figure) return;
+  figure.addEventListener('mouseenter', () => {
+    video.play().catch(() => {});
+  });
+  figure.addEventListener('mouseleave', () => {
+    video.pause();
+    video.currentTime = 0;
+  });
+});
+</script>
+</body>
+</html>
